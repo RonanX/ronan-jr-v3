@@ -1,0 +1,7 @@
+Cloud Formation - utility, stat:mobility, mp_cost:10, duration:2, description:Advantage on attacks via afterimages
+Static Shield - utility, stat:technique, mp_cost:10, description:Reaction +3 AC. If hit deal 6 lightning
+Tempest Fang - light, stat:mobility, damage:4, hits:2, description:Each hit attackers have disadvantage vs you
+Storm Drummer - medium, stat:mobility, damage:3, hits:4, mp_cost:10, description:Clean hit stun until your next turn
+Thunderlash - medium, stat:technique, damage:8, mp_cost:12, duration:2, cooldown:3, description:Mark targets take +3 from attacks for 2 rounds
+Licér - medium, stat:technique, damage:12, mp_cost:12, description:Concentrated lightning bolt
+Licér wi Rós - heavy, stat:technique, damage:5, mp_cost:18, save_type:dex, duration:3, cooldown:3, description:Typhoon. Dex save each round or dmg. Dis on attacks

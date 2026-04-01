@@ -1,0 +1,8 @@
+Twin Cyclones - utility, stat:mobility, mp_cost:10, save_type:dex, save_dc:10, description:Gap closer. Fail advantage +4 dmg next attack
+Wall Cloud - utility, stat:mobility, mp_cost:10, duration:2, description:Immune to most small ranged attacks
+Calm Before - utility, stat:mobility, damage:4, mp_cost:10, description:Reaction auto-dodge afterimage deals 4 reposition
+Approaching Storm - light, stat:mobility, damage:5, mp_cost:3, description:If first attack advantage
+Gentle Breeze - light, stat:mobility, damage:4, mp_cost:4, star_cost:1, cooldown:1, description:Auto-hit. Reaction when enemy disengages
+Eye of the Storm - medium, stat:mobility, damage:6, mp_cost:12, description:Bypass shields. If blocked lose next reaction
+Gust Front - medium, stat:mobility, damage:6, mp_cost:12, description:On hit next attack +6 dmg ignores 1 defensive ability
+Perfect Storm - heavy, stat:mobility, hits:4, mp_cost:25, cooldown:4, description:4 light attacks roll each. Each after 1st +2 dmg

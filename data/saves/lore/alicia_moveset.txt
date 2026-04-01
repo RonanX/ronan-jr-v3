@@ -1,0 +1,16 @@
+Flutter Flash (Energy) - utility, stat:combat, mp_cost:10, duration:3, description:+2 damage and burning to energy attacks
+Flutter Flash (Mind) - utility, stat:combat, mp_cost:10, duration:3, description:Advantage on mind attacks +2 AC
+Flutter Flash (Fighter) - utility, stat:combat, mp_cost:10, duration:3, description:+3 AC resistance to physical damage
+Healing Hands - utility, stat:focus, mp_cost:12, cooldown:3, star_cost:1, description:Restore 12+wis HP to self or ally
+Phase Step - utility, stat:mobility, mp_cost:8, uses:4, star_cost:1, description:Advantage on next attack OR disadvantage on attack vs you
+Energy Bubble - utility, stat:combat, mp_cost:10, uses:3, duration:3, description:Gain 18 temp HP
+Energy Spark - light, stat:combat, damage:5, mp_cost:6, description:On hit energized for 3 rounds
+Psycho Pull - light, stat:combat, damage:4, mp_cost:6, targets:3, description:Each hit gives disadvantage on next attack
+Shimmering Strike - light, stat:mobility, damage:5, mp_cost:6, description:On hit shimmering 1 round
+Flower Power - medium, stat:combat, damage:5, hits:3, mp_cost:12, description:Each hit different target +2 per hit vs energized
+Psycho Punchies - medium, stat:combat, damage:10, mp_cost:14, save_type:con, save_dc:15, description:Con save or stunned. Reaction vs ranged
+Shattering Surge - heavy, stat:mobility, damage:11, mp_cost:18, star_cost:3, save_type:dex, save_dc:15, half_on_save:1, cooldown:3, description:Primary full dmg. Nearby dex save or 6 half on save
+Lazor Blast - heavy, stat:combat, damage:16, mp_cost:25, save_type:dex, save_dc:15, half_on_save:1, save_effect:Stunned, cooldown:3, description:Line attack. +6 vs energized. Destroys cover
+Psychic Slam - heavy, stat:combat, damage:10, mp_cost:22, star_cost:3, save_type:con, save_dc:15, cooldown:2, description:All nearby. +4 per extra enemy
+Giggle Fit - heavy, stat:combat, damage:6, mp_cost:18, star_cost:3, save_type:wis, save_dc:15, duration:2, cooldown:3, description:Save stunned 2 rounds 6 per turn. Success dis on next attack
+Energy Rain - heavy, stat:combat, damage:9, mp_cost:20, star_cost:3, duration:3, cooldown:4, description:9 force per turn. +2 vs energized

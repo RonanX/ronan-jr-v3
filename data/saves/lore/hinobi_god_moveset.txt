@@ -1,0 +1,16 @@
+Descend - light, stat:mobility, damage:5, mp_cost:6, description:Drop from above. On hit prone
+Descend (Upgraded) - light, stat:mobility, damage:5, mp_cost:6, description:Advantage. 3 force AoE. Requires 1 stack
+Orbit - light, stat:technique, damage:6, mp_cost:8, duration:2, description:Halberd attacks autonomously each turn
+Orbit (Upgraded) - light, stat:technique, damage:6, mp_cost:8, duration:2, description:Attacks twice per turn. Requires 1 stack
+Scatter - medium, stat:mobility, damage:4, hits:4, mp_cost:14, description:4 hits. Each -1 AC stacks
+Scatter (Upgraded) - medium, stat:mobility, damage:4, hits:4, mp_cost:14, description:Marks targets. Lightning chains +4. Requires 2 stacks
+Eclipse - utility, stat:combat, mp_cost:15, duration:2, description:Enemies dis vs you. You adv on saves
+Eclipse (Upgraded) - utility, stat:combat, mp_cost:15, duration:2, description:Also -2 AC all enemies. Requires 2 stacks
+Pierce - heavy, stat:technique, damage:18, mp_cost:22, star_cost:3, cooldown:3, description:Ignores all reductions. Cannot be blocked
+Pierce (Upgraded) - heavy, stat:technique, damage:18, mp_cost:22, star_cost:3, cooldown:3, description:Also dispel 1 effect. Requires 3 stacks
+Severance - heavy, stat:power, damage:20, mp_cost:24, cooldown:3, description:Wind blade. Ignores cover barriers
+Severance (Upgraded) - heavy, stat:power, damage:20, mp_cost:24, cooldown:3, description:Hits all in line. Requires 3 stacks
+Sunder - heavy, stat:combat, damage:20, mp_cost:25, cooldown:4, description:Adapts to last dmg type. Physical magic status
+Sunder (Upgraded) - heavy, stat:combat, damage:20, mp_cost:25, cooldown:4, duration:1, description:Vulnerability for 1 round. Requires 3 stacks
+Erupt - utility, stat:combat, mp_cost:12, cooldown:2, description:Reaction nullify dmg. Next attack of that type +10 crit
+Erupt (Upgraded) - utility, stat:combat, mp_cost:12, duration:2, cooldown:2, description:Also resistance for 2 rounds. Requires 3 stacks

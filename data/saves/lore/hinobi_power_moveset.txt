@@ -1,0 +1,6 @@
+Veprux's Roar - utility, stat:power, mp_cost:10, description:Next attack +8 dmg ignores reduction
+Veprux's Hide - utility, stat:resilience, mp_cost:15, duration:3, description:Reduce incoming by 5. Attackers take 6 on contact
+Gryphix's Flight - medium, stat:power, damage:10, mp_cost:12, description:Unstoppable rush. Can follow with another attack
+Veprux's Fang - medium, stat:power, damage:12, mp_cost:14, save_type:con, description:Con save or stunned
+Veprux's Quake - heavy, stat:power, damage:16, mp_cost:20, save_type:power, cooldown:2, description:Ground slam. Str save or prone
+Gryphix's Spite - medium, stat:power, damage:8, mp_cost:10, cooldown:1, description:Reaction when hit strike back. Double if took 10+ dmg

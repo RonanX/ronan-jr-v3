@@ -1,0 +1,56 @@
+{
+  "turn_order": [
+    {
+      "name": "Mage",
+      "initiative": 18
+    },
+    {
+      "name": "Fighter",
+      "initiative": 15
+    },
+    {
+      "name": "Enemy",
+      "initiative": 10
+    }
+  ],
+  "round_number": 1,
+  "current_turn_index": 0,
+  "character_states": {
+    "Mage": {
+      "hp": 85,
+      "mp": 40,
+      "stars": 3
+    },
+    "Fighter": {
+      "hp": 130,
+      "mp": 50,
+      "stars": 5
+    },
+    "Enemy": {
+      "hp": 100,
+      "mp": 50,
+      "stars": 5
+    }
+  },
+  "effects": {
+    "Mage": [
+      {
+        "name": "Haste",
+        "duration": 3
+      }
+    ],
+    "Fighter": [],
+    "Enemy": []
+  },
+  "deployables": [
+    {
+      "name": "Turret",
+      "owner": "Mage",
+      "hp": 30,
+      "max_hp": 30,
+      "stars": 3,
+      "max_stars": 3,
+      "duration": 2
+    }
+  ]
+}

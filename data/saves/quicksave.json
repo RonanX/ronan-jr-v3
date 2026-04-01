@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-03-09T18:57:32.930564",
+  "round_number": 1,
+  "character_count": 2,
+  "turn_order": [
+    {
+      "name": "test",
+      "initiative": 19,
+      "roll": 16,
+      "dexterity": 3
+    },
+    {
+      "name": "test2",
+      "initiative": 9,
+      "roll": 6,
+      "dexterity": 3
+    }
+  ],
+  "current_turn_index": 0,
+  "character_states": {
+    "test": {
+      "stars": 5,
+      "effects": []
+    },
+    "test2": {
+      "stars": 5,
+      "effects": []
+    }
+  }
+}

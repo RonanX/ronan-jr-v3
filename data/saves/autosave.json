@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-03-28T17:54:37.082872",
+  "round_number": 2,
+  "character_count": 2,
+  "turn_order": [
+    {
+      "name": "Hinobi",
+      "initiative": 18,
+      "roll": 15,
+      "dexterity": 3
+    },
+    {
+      "name": "Alicia",
+      "initiative": 17,
+      "roll": 14,
+      "dexterity": 3
+    }
+  ],
+  "current_turn_index": 0,
+  "character_states": {
+    "Hinobi": {
+      "stars": 5,
+      "effects": []
+    },
+    "Alicia": {
+      "stars": 5,
+      "effects": []
+    }
+  }
+}
