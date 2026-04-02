@@ -540,9 +540,9 @@ class RonanDashboard(ctk.CTk):
 
             # Get all active effects
             self.cursor.execute("""
-                SELECT id, character_name, effect_name, expires_at_round
+                SELECT id, character_name, effect_name, available_until_round
                 FROM effects
-                ORDER BY expires_at_round, character_name, effect_name
+                ORDER BY available_until_round, character_name, effect_name
             """)
 
             effects = self.cursor.fetchall()
@@ -556,12 +556,12 @@ class RonanDashboard(ctk.CTk):
                 no_effects_label.pack(pady=20)
             else:
                 # Display each effect with a kill button
-                for effect_id, char_name, effect_name, expires_at_round in effects:
+                for effect_id, char_name, effect_name, available_until_round in effects:
                     effect_frame = ctk.CTkFrame(self.effects_scroll_frame, fg_color="transparent")
                     effect_frame.pack(pady=5, padx=10, fill="x")
 
                     # Effect text
-                    effect_text = f"[Round {expires_at_round}] {char_name} - {effect_name}"
+                    effect_text = f"[Round {available_until_round}] {char_name} - {effect_name}"
                     effect_label = ctk.CTkLabel(
                         effect_frame,
                         text=effect_text,

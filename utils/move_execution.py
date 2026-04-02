@@ -137,7 +137,7 @@ def validate_costs(
     if current_mp < mp_cost:
         return False, f"❌ Not enough MP! Need {mp_cost}💙, have {current_mp}💙"
 
-    if current_hp <= hp_cost:  # <= because can't spend HP you don't have
+    if current_hp < hp_cost:  # < allows sacrifice moves that drop to exactly 0 HP
         return False, f"❌ Not enough HP! Need {hp_cost}❤️, have {current_hp}❤️"
 
     return True, None

@@ -39,25 +39,62 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db=None
         # For non-stackable effects, check if it already exists and refresh/update it
         if not stackable:
             async with db.execute("""
-                SELECT id FROM effects WHERE character_name = ? AND effect_name = ?
+                SELECT id, contributions FROM effects WHERE character_name = ? AND effect_name = ?
             """, (character_name, effect_data['name'])) as cursor:
                 existing = await cursor.fetchone()
 
             if existing:
-                # Update existing effect's duration and value
+                effect_id, old_contributions_json = existing
+                old_contributions = json.loads(old_contributions_json) if old_contributions_json else {}
+                new_contributions = effect_data.get('contributions', {})
+
+                # Get current modifiers
+                async with db.execute("""
+                    SELECT stat_modifiers, roll_modifiers, ac_modifier
+                    FROM characters WHERE name = ?
+                """, (character_name,)) as cursor:
+                    row = await cursor.fetchone()
+                    stat_mods = json.loads(row[0])
+                    roll_mods = json.loads(row[1])
+                    ac_mod = row[2]
+
+                # Remove old contributions
+                for stat, value in old_contributions.get('stat_modifiers', {}).items():
+                    stat_mods[stat] -= value
+                for roll_type, value in old_contributions.get('roll_modifiers', {}).items():
+                    roll_mods[roll_type] -= value
+                ac_mod -= old_contributions.get('ac_modifier', 0)
+
+                # Add new contributions
+                for stat, value in new_contributions.get('stat_modifiers', {}).items():
+                    stat_mods[stat] += value
+                for roll_type, value in new_contributions.get('roll_modifiers', {}).items():
+                    roll_mods[roll_type] += value
+                ac_mod += new_contributions.get('ac_modifier', 0)
+
+                # Update character modifiers
+                await db.execute("""
+                    UPDATE characters
+                    SET stat_modifiers = ?, roll_modifiers = ?, ac_modifier = ?
+                    WHERE name = ?
+                """, (json.dumps(stat_mods), json.dumps(roll_mods), ac_mod, character_name))
+
+                # Update effect in database
                 await db.execute("""
                     UPDATE effects
-                    SET available_until_round = ?, resource_value = ?, note = ?
+                    SET available_until_round = ?, contributions = ?, resource_value = ?, dot_value = ?, note = ?
                     WHERE character_name = ? AND effect_name = ?
                 """, (
                     effect_data.get('available_until_round'),
+                    json.dumps(new_contributions),
                     effect_data.get('resource_value', '0'),
+                    effect_data.get('dot_value', '0'),
                     effect_data.get('note', ''),
                     character_name,
                     effect_data['name']
                 ))
                 await db.commit()
-                print(f"[EFFECT] Refreshed '{effect_data['name']}' on {character_name}")
+                print(f"[EFFECT] Refreshed '{effect_data['name']}' on {character_name} (updated modifiers)")
                 return
 
         # Get current modifiers
@@ -261,13 +298,14 @@ async def expire_effects(character_name: str, current_round: int, db=None) -> li
             await db.close()
 
 
-def get_preset_effect(effect_name: str, duration: int) -> Dict[str, Any]:
+def get_preset_effect(effect_name: str, duration: int, **kwargs) -> Dict[str, Any]:
     """
     Get a preset effect configuration.
 
     Args:
         effect_name: Name of preset effect (burning, stunned, advantage, disadvantage, poisoned)
         duration: Number of rounds until effect expires
+        **kwargs: Optional overrides (dot_value, resource_value, note, etc.)
 
     Returns:
         Effect data dict ready for apply_effect()
@@ -338,7 +376,7 @@ def get_preset_effect(effect_name: str, duration: int) -> Dict[str, Any]:
             "name": "prone",
             "emoji": "🔻",
             "contributions": {
-                "roll_modifiers": {"incoming_modifier": -2}
+                "roll_modifiers": {"incoming_modifier": 2}  # Positive = attackers get MORE dice (advantage)
             },
             "stackable": False,
             "note": ""
@@ -372,7 +410,7 @@ def get_preset_effect(effect_name: str, duration: int) -> Dict[str, Any]:
             "name": "marked",
             "emoji": "🎯",
             "contributions": {
-                "roll_modifiers": {"incoming_modifier": -1}
+                "roll_modifiers": {"incoming_modifier": 1}  # Positive = attackers get MORE dice (easier to hit)
             },
             "stackable": False,
             "note": ""
@@ -402,4 +440,6 @@ def get_preset_effect(effect_name: str, duration: int) -> Dict[str, Any]:
 
     effect = presets[effect_name].copy()
     effect["available_until_round"] = duration
+    # Merge in any kwargs to override defaults
+    effect.update(kwargs)
     return effect

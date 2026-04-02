@@ -13,6 +13,10 @@ DATABASE_PATH = "database/ronan.db"
 async def init_database():
     """Initialize database with required tables"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Enable WAL mode for better concurrency
+        await db.execute("PRAGMA journal_mode=WAL")
+        # Enable foreign keys
+        await db.execute("PRAGMA foreign_keys=ON")
         # Characters table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS characters (
@@ -94,9 +98,33 @@ async def init_database():
                 current_hp INTEGER,
                 current_mp INTEGER,
                 stars INTEGER DEFAULT 5,
-                effects_json TEXT DEFAULT '[]'
+                effects_json TEXT DEFAULT '[]',
+                cooldowns_json TEXT DEFAULT '{}',
+                FOREIGN KEY (character_name) REFERENCES characters(name) ON DELETE CASCADE
             )
         """)
+
+        # Effects table (tracks active effects on characters)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS effects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_name TEXT NOT NULL,
+                effect_name TEXT NOT NULL,
+                emoji TEXT,
+                available_until_round INTEGER,
+                contributions TEXT,
+                dot_damage INTEGER DEFAULT 0,
+                dot_type TEXT,
+                dot_value TEXT DEFAULT '0',
+                resource_type TEXT DEFAULT 'hp',
+                resource_change INTEGER DEFAULT 0,
+                resource_value TEXT DEFAULT '0',
+                stackable INTEGER DEFAULT 0,
+                note TEXT DEFAULT '',
+                FOREIGN KEY (character_name) REFERENCES characters(name) ON DELETE CASCADE
+            )
+        """)
+
         # Deployables table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS deployables (
