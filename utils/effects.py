@@ -11,7 +11,7 @@ from utils.value_parser import parse_value, validate_value_format
 DATABASE_PATH = 'database/ronan.db'
 
 
-async def apply_effect(character_name: str, effect_data: Dict[str, Any], db=None):
+async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
     """
     Apply effect and add contributions to character modifiers.
 
@@ -27,11 +27,8 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db=None
             - resource_value: Resource change value (flat/dice/percentage) (optional)
             - stackable: Whether multiple instances can exist (optional)
             - note: Optional note to append to display name (optional)
-        db: Optional database connection (for testing)
+        db: Database connection (required)
     """
-    close_db = db is None
-    if db is None:
-        db = await aiosqlite.connect(DATABASE_PATH)
 
     try:
         stackable = effect_data.get('stackable', False)
@@ -152,23 +149,17 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db=None
 
         await db.commit()
         print(f"[EFFECT] Applied '{effect_data['name']}' to {character_name}")
-    finally:
-        if close_db:
-            await db.close()
 
 
-async def remove_effect(character_name: str, effect_identifier, db=None):
+async def remove_effect(character_name: str, effect_identifier, db):
     """
     Remove effect and subtract contributions from character modifiers.
 
     Args:
         character_name: Name of character
         effect_identifier: Effect ID (int) or effect name (str)
-        db: Optional database connection (for testing)
+        db: Database connection (required)
     """
-    close_db = db is None
-    if db is None:
-        db = await aiosqlite.connect(DATABASE_PATH)
 
     try:
         # Determine if identifier is ID or name
@@ -221,81 +212,62 @@ async def remove_effect(character_name: str, effect_identifier, db=None):
 
         await db.commit()
         print(f"[EFFECT] Removed effect {effect_identifier} from {character_name}")
-    finally:
-        if close_db:
-            await db.close()
 
 
-async def get_active_effects(character_name: str, db=None) -> list:
+async def get_active_effects(character_name: str, db) -> list:
     """Get all active effects for a character."""
-    close_db = db is None
-    if db is None:
-        db = await aiosqlite.connect(DATABASE_PATH)
-
-    try:
-        async with db.execute("""
-            SELECT id, effect_name, emoji, available_until_round, dot_damage, dot_type, dot_value,
-                   resource_type, resource_change, resource_value, stackable, note
-            FROM effects
-            WHERE character_name = ?
-            ORDER BY available_until_round ASC
-        """, (character_name,)) as cursor:
-            rows = await cursor.fetchall()
-            return [
-                {
-                    'id': row[0],
-                    'name': row[1],
-                    'emoji': row[2],
-                    'available_until_round': row[3],
-                    'dot_damage': row[4],  # Legacy
-                    'dot_type': row[5],    # Legacy
-                    'dot_value': row[6] if len(row) > 6 else '0',
-                    'resource_type': row[7] if len(row) > 7 else 'hp',
-                    'resource_change': row[8] if len(row) > 8 else 0,  # Legacy
-                    'resource_value': row[9] if len(row) > 9 else '0',
-                    'stackable': bool(row[10]) if len(row) > 10 else False,
-                    'note': row[11] if len(row) > 11 else ''
-                }
-                for row in rows
-            ]
-    finally:
-        if close_db:
-            await db.close()
+    async with db.execute("""
+        SELECT id, effect_name, emoji, available_until_round, dot_damage, dot_type, dot_value,
+               resource_type, resource_change, resource_value, stackable, note
+        FROM effects
+        WHERE character_name = ?
+        ORDER BY available_until_round ASC
+    """, (character_name,)) as cursor:
+        rows = await cursor.fetchall()
+        return [
+            {
+                'id': row[0],
+                'name': row[1],
+                'emoji': row[2],
+                'available_until_round': row[3],
+                'dot_damage': row[4],  # Legacy
+                'dot_type': row[5],    # Legacy
+                'dot_value': row[6] if len(row) > 6 else '0',
+                'resource_type': row[7] if len(row) > 7 else 'hp',
+                'resource_change': row[8] if len(row) > 8 else 0,  # Legacy
+                'resource_value': row[9] if len(row) > 9 else '0',
+                'stackable': bool(row[10]) if len(row) > 10 else False,
+                'note': row[11] if len(row) > 11 else ''
+            }
+            for row in rows
+        ]
 
 
-async def expire_effects(character_name: str, current_round: int, db=None) -> list:
+async def expire_effects(character_name: str, current_round: int, db) -> list:
     """
     Remove expired effects and return list of expired effect names.
 
     Args:
         character_name: Name of character
         current_round: Current combat round
-        db: Optional database connection (for reusing existing connection)
+        db: Database connection (required)
 
     Returns:
         List of (effect_id, effect_name) tuples that expired
     """
-    close_db = db is None
-    if db is None:
-        db = await aiosqlite.connect(DATABASE_PATH)
+    # Get expired effects
+    async with db.execute("""
+        SELECT id, effect_name
+        FROM effects
+        WHERE character_name = ? AND available_until_round <= ?
+    """, (character_name, current_round)) as cursor:
+        expired = await cursor.fetchall()
 
-    try:
-        # Get expired effects
-        async with db.execute("""
-            SELECT id, effect_name
-            FROM effects
-            WHERE character_name = ? AND available_until_round <= ?
-        """, (character_name, current_round)) as cursor:
-            expired = await cursor.fetchall()
+    # Remove each expired effect (pass db connection to avoid nested connections)
+    for effect_id, effect_name in expired:
+        await remove_effect(character_name, effect_id, db=db)
 
-        # Remove each expired effect (pass db connection to avoid nested connections)
-        for effect_id, effect_name in expired:
-            await remove_effect(character_name, effect_id, db=db)
-
-        return expired
-    finally:
-        if close_db:
-            await db.close()
+    return expired
 
 
 def get_preset_effect(effect_name: str, duration: int, **kwargs) -> Dict[str, Any]:

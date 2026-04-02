@@ -9,6 +9,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
 import logging
+import aiosqlite
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +49,14 @@ class RonanBot(commands.Bot):
 
     async def setup_hook(self):
         """Called when the bot is starting up"""
+        # Initialize persistent database connection
+        self.db = await aiosqlite.connect('database/ronan.db')
+        # Enable WAL mode for better concurrency
+        await self.db.execute("PRAGMA journal_mode=WAL")
+        # Enable foreign keys
+        await self.db.execute("PRAGMA foreign_keys=ON")
+        logger.info("Persistent database connection established")
+
         # Load cogs
         cogs_to_load = [
             'cogs.character',
@@ -70,6 +79,13 @@ class RonanBot(commands.Bot):
         # Sync commands (optional - can be done manually)
         # await self.tree.sync()
 
+    async def close(self):
+        """Clean up resources when bot shuts down"""
+        if hasattr(self, 'db'):
+            await self.db.close()
+            logger.info("Database connection closed")
+        await super().close()
+
     async def on_ready(self):
         """Called when the bot is ready"""
         logger.info(f'Logged in as {self.user} (ID: {self.user.id})')
@@ -77,11 +93,9 @@ class RonanBot(commands.Bot):
         logger.info(f'Ready to process commands!')
 
         # Clear combat_active flag on startup
-        import aiosqlite
         try:
-            async with aiosqlite.connect('database/ronan.db') as db:
-                await db.execute("UPDATE initiative SET combat_active = 0 WHERE id = 1")
-                await db.commit()
+            await self.db.execute("UPDATE initiative SET combat_active = 0 WHERE id = 1")
+            await self.db.commit()
             logger.info("Cleared combat_active flag on startup")
         except Exception as e:
             logger.error(f"Failed to clear combat_active flag: {e}", exc_info=True)
