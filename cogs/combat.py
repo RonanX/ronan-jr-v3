@@ -493,7 +493,7 @@ class CombatCommands(commands.Cog):
                         """, (zero_mods, current_char_name))
 
                 # Get active effects and process DoT/resource changes
-                active_effects = await get_active_effects(current_char_name)
+                active_effects = await get_active_effects(current_char_name, db=db)
 
                 # Get character's max HP/MP for percentage calculations
                 async with db.execute("""
@@ -1452,20 +1452,20 @@ class CombatCommands(commands.Cog):
                 return
 
             # Get current round
-            async with aiosqlite.connect('database/ronan.db') as db:
-                async with db.execute("SELECT round_number, combat_active FROM initiative WHERE id = 1") as cursor:
-                    row = await cursor.fetchone()
-                    current_round = row[0] if row and row[1] == 1 else 99
+            db = self.bot.db
+            async with db.execute("SELECT round_number, combat_active FROM initiative WHERE id = 1") as cursor:
+                row = await cursor.fetchone()
+                current_round = row[0] if row and row[1] == 1 else 99
 
-                # Handle special effects
-                if preset.get("special") == "stunned":
-                    # Stunned: set stars to 0 immediately
-                    await db.execute("UPDATE characters SET current_stars = 0 WHERE name = ?", (character,))
-                    await db.execute("UPDATE combat_state SET stars = 0 WHERE character_name = ?", (character,))
-                    await db.commit()
-                    print(f"[STUNNED] Set {character}'s stars to 0")
+            # Handle special effects
+            if preset.get("special") == "stunned":
+                # Stunned: set stars to 0 immediately
+                await db.execute("UPDATE characters SET current_stars = 0 WHERE name = ?", (character,))
+                await db.execute("UPDATE combat_state SET stars = 0 WHERE character_name = ?", (character,))
+                await db.commit()
+                print(f"[STUNNED] Set {character}'s stars to 0")
 
-                elif preset.get("special") == "slowed":
+            elif preset.get("special") == "slowed":
                     # Slowed: calculate DEX penalty
                     async with db.execute("SELECT base_stats FROM characters WHERE name = ?", (character,)) as cursor:
                         char_row = await cursor.fetchone()
@@ -1504,7 +1504,7 @@ class CombatCommands(commands.Cog):
 
             # Apply effect using helper
             from utils.effects import apply_effect
-            await apply_effect(character, effect_data)
+            await apply_effect(character, effect_data, db=db)
 
             emoji = preset["emoji"]
             note_text = f" - {note}" if note else ""
@@ -1587,7 +1587,7 @@ class CombatCommands(commands.Cog):
 
             # Apply effect using helper
             from utils.effects import apply_effect
-            await apply_effect(character, effect_data)
+            await apply_effect(character, effect_data, db=db)
 
             note_text = f" ({note})" if note else ""
             print(f"[OK] Applied DoT {value}{note_text} to {character} ({duration} rounds)")

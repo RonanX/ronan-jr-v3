@@ -30,125 +30,129 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
         db: Database connection (required)
     """
 
-    try:
-        stackable = effect_data.get('stackable', False)
+    stackable = effect_data.get('stackable', False)
 
-        # For non-stackable effects, check if it already exists and refresh/update it
-        if not stackable:
-            async with db.execute("""
-                SELECT id, contributions FROM effects WHERE character_name = ? AND effect_name = ?
-            """, (character_name, effect_data['name'])) as cursor:
-                existing = await cursor.fetchone()
-
-            if existing:
-                effect_id, old_contributions_json = existing
-                old_contributions = json.loads(old_contributions_json) if old_contributions_json else {}
-                new_contributions = effect_data.get('contributions', {})
-
-                # Get current modifiers
-                async with db.execute("""
-                    SELECT stat_modifiers, roll_modifiers, ac_modifier
-                    FROM characters WHERE name = ?
-                """, (character_name,)) as cursor:
-                    row = await cursor.fetchone()
-                    stat_mods = json.loads(row[0])
-                    roll_mods = json.loads(row[1])
-                    ac_mod = row[2]
-
-                # Remove old contributions
-                for stat, value in old_contributions.get('stat_modifiers', {}).items():
-                    stat_mods[stat] -= value
-                for roll_type, value in old_contributions.get('roll_modifiers', {}).items():
-                    roll_mods[roll_type] -= value
-                ac_mod -= old_contributions.get('ac_modifier', 0)
-
-                # Add new contributions
-                for stat, value in new_contributions.get('stat_modifiers', {}).items():
-                    stat_mods[stat] += value
-                for roll_type, value in new_contributions.get('roll_modifiers', {}).items():
-                    roll_mods[roll_type] += value
-                ac_mod += new_contributions.get('ac_modifier', 0)
-
-                # Update character modifiers
-                await db.execute("""
-                    UPDATE characters
-                    SET stat_modifiers = ?, roll_modifiers = ?, ac_modifier = ?
-                    WHERE name = ?
-                """, (json.dumps(stat_mods), json.dumps(roll_mods), ac_mod, character_name))
-
-                # Update effect in database
-                await db.execute("""
-                    UPDATE effects
-                    SET available_until_round = ?, contributions = ?, resource_value = ?, dot_value = ?, note = ?
-                    WHERE character_name = ? AND effect_name = ?
-                """, (
-                    effect_data.get('available_until_round'),
-                    json.dumps(new_contributions),
-                    effect_data.get('resource_value', '0'),
-                    effect_data.get('dot_value', '0'),
-                    effect_data.get('note', ''),
-                    character_name,
-                    effect_data['name']
-                ))
-                await db.commit()
-                print(f"[EFFECT] Refreshed '{effect_data['name']}' on {character_name} (updated modifiers)")
-                return
-
-        # Get current modifiers
+    # For non-stackable effects, check if it already exists and refresh/update it
+    if not stackable:
         async with db.execute("""
-            SELECT stat_modifiers, roll_modifiers, ac_modifier
-            FROM characters WHERE name = ?
-        """, (character_name,)) as cursor:
-            row = await cursor.fetchone()
-            if not row:
-                raise ValueError(f"Character '{character_name}' not found")
+            SELECT id, contributions FROM effects WHERE character_name = ? AND effect_name = ?
+        """, (character_name, effect_data['name'])) as cursor:
+            existing = await cursor.fetchone()
 
-            stat_mods = json.loads(row[0])
-            roll_mods = json.loads(row[1])
-            ac_mod = row[2]
+        if existing:
+            effect_id, old_contributions_json = existing
+            old_contributions = json.loads(old_contributions_json) if old_contributions_json else {}
+            new_contributions = effect_data.get('contributions', {})
 
-        # Apply contributions
-        contributions = effect_data.get('contributions', {})
+            # Get current modifiers
+            async with db.execute("""
+                SELECT stat_modifiers, roll_modifiers, ac_modifier
+                FROM characters WHERE name = ?
+            """, (character_name,)) as cursor:
+                row = await cursor.fetchone()
+                stat_mods = json.loads(row[0])
+                roll_mods = json.loads(row[1])
+                ac_mod = row[2]
 
-        for stat, value in contributions.get('stat_modifiers', {}).items():
-            stat_mods[stat] += value
+            # Remove old contributions
+            for stat, value in old_contributions.get('stat_modifiers', {}).items():
+                stat_mods[stat] -= value
+            for roll_type, value in old_contributions.get('roll_modifiers', {}).items():
+                roll_mods[roll_type] -= value
+            ac_mod -= old_contributions.get('ac_modifier', 0)
 
-        for roll_type, value in contributions.get('roll_modifiers', {}).items():
-            roll_mods[roll_type] += value
+            # Add new contributions
+            for stat, value in new_contributions.get('stat_modifiers', {}).items():
+                stat_mods[stat] += value
+            for roll_type, value in new_contributions.get('roll_modifiers', {}).items():
+                roll_mods[roll_type] += value
+            ac_mod += new_contributions.get('ac_modifier', 0)
 
-        ac_mod += contributions.get('ac_modifier', 0)
+            # Update character modifiers
+            await db.execute("""
+                UPDATE characters
+                SET stat_modifiers = ?, roll_modifiers = ?, ac_modifier = ?
+                WHERE name = ?
+            """, (json.dumps(stat_mods), json.dumps(roll_mods), ac_mod, character_name))
 
-        # Update character
+            # Update effect in database
+            await db.execute("""
+                UPDATE effects
+                SET available_until_round = ?, contributions = ?, resource_value = ?, dot_value = ?, note = ?
+                WHERE character_name = ? AND effect_name = ?
+            """, (
+                effect_data.get('available_until_round'),
+                json.dumps(new_contributions),
+                effect_data.get('resource_value', '0'),
+                effect_data.get('dot_value', '0'),
+                effect_data.get('note', ''),
+                character_name,
+                effect_data['name']
+            ))
+            await db.commit()
+            print(f"[EFFECT] Refreshed '{effect_data['name']}' on {character_name} (updated modifiers)")
+            return
+
+    # Apply contributions using atomic JSON updates
+    contributions = effect_data.get('contributions', {})
+
+    # Build separate UPDATE for each JSON field to update atomically
+    stat_mods = contributions.get('stat_modifiers', {})
+    for stat, value in stat_mods.items():
+        await db.execute(f"""
+            UPDATE characters
+            SET stat_modifiers = json_set(
+                stat_modifiers,
+                '$.{stat}',
+                COALESCE(json_extract(stat_modifiers, '$.{stat}'), 0) + ?
+            )
+            WHERE name = ?
+        """, (value, character_name))
+
+    roll_mods = contributions.get('roll_modifiers', {})
+    for roll_type, value in roll_mods.items():
+        await db.execute(f"""
+            UPDATE characters
+            SET roll_modifiers = json_set(
+                roll_modifiers,
+                '$.{roll_type}',
+                COALESCE(json_extract(roll_modifiers, '$.{roll_type}'), 0) + ?
+            )
+            WHERE name = ?
+        """, (value, character_name))
+
+    ac_modifier_value = contributions.get('ac_modifier', 0)
+    if ac_modifier_value != 0:
         await db.execute("""
             UPDATE characters
-            SET stat_modifiers = ?, roll_modifiers = ?, ac_modifier = ?
+            SET ac_modifier = ac_modifier + ?
             WHERE name = ?
-        """, (json.dumps(stat_mods), json.dumps(roll_mods), ac_mod, character_name))
+        """, (ac_modifier_value, character_name))
 
-        # Insert effect
-        await db.execute("""
-            INSERT INTO effects (character_name, effect_name, emoji, available_until_round, contributions,
-                                dot_damage, dot_type, dot_value, resource_type, resource_change, resource_value,
-                                stackable, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            character_name,
-            effect_data['name'],
-            effect_data.get('emoji', '🔮'),
-            effect_data.get('available_until_round'),
-            json.dumps(contributions),
-            effect_data.get('dot_damage', 0),  # Legacy field
-            effect_data.get('dot_type', ''),    # Legacy field
-            effect_data.get('dot_value', '0'),
-            effect_data.get('resource_type', 'hp'),
-            effect_data.get('resource_change', 0),  # Legacy field
-            effect_data.get('resource_value', '0'),
-            1 if stackable else 0,
-            effect_data.get('note', '')
-        ))
+    # Insert effect
+    await db.execute("""
+        INSERT INTO effects (character_name, effect_name, emoji, available_until_round, contributions,
+                            dot_damage, dot_type, dot_value, resource_type, resource_change, resource_value,
+                            stackable, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        character_name,
+        effect_data['name'],
+        effect_data.get('emoji', '🔮'),
+        effect_data.get('available_until_round'),
+        json.dumps(contributions),
+        effect_data.get('dot_damage', 0),  # Legacy field
+        effect_data.get('dot_type', ''),    # Legacy field
+        effect_data.get('dot_value', '0'),
+        effect_data.get('resource_type', 'hp'),
+        effect_data.get('resource_change', 0),  # Legacy field
+        effect_data.get('resource_value', '0'),
+        1 if stackable else 0,
+        effect_data.get('note', '')
+    ))
 
-        await db.commit()
-        print(f"[EFFECT] Applied '{effect_data['name']}' to {character_name}")
+    await db.commit()
+    print(f"[EFFECT] Applied '{effect_data['name']}' to {character_name}")
 
 
 async def remove_effect(character_name: str, effect_identifier, db):
@@ -161,57 +165,63 @@ async def remove_effect(character_name: str, effect_identifier, db):
         db: Database connection (required)
     """
 
-    try:
-        # Determine if identifier is ID or name
-        if isinstance(effect_identifier, int):
-            query = "SELECT contributions FROM effects WHERE id = ? AND character_name = ?"
-            delete_query = "DELETE FROM effects WHERE id = ?"
-        else:
-            query = "SELECT contributions FROM effects WHERE effect_name = ? AND character_name = ?"
-            delete_query = "DELETE FROM effects WHERE effect_name = ? AND character_name = ?"
+    # Determine if identifier is ID or name
+    if isinstance(effect_identifier, int):
+        query = "SELECT contributions FROM effects WHERE id = ? AND character_name = ?"
+        delete_query = "DELETE FROM effects WHERE id = ?"
+    else:
+        query = "SELECT contributions FROM effects WHERE effect_name = ? AND character_name = ?"
+        delete_query = "DELETE FROM effects WHERE effect_name = ? AND character_name = ?"
 
-        # Get effect contributions
-        async with db.execute(query, (effect_identifier, character_name)) as cursor:
-            row = await cursor.fetchone()
-            if not row:
-                print(f"[WARN] Effect {effect_identifier} not found for {character_name}")
-                return
-            contributions = json.loads(row[0])
+    # Get effect contributions
+    async with db.execute(query, (effect_identifier, character_name)) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            print(f"[WARN] Effect {effect_identifier} not found for {character_name}")
+            return
+        contributions = json.loads(row[0])
 
-        # Get current modifiers
-        async with db.execute("""
-            SELECT stat_modifiers, roll_modifiers, ac_modifier
-            FROM characters WHERE name = ?
-        """, (character_name,)) as cursor:
-            row = await cursor.fetchone()
-            stat_mods = json.loads(row[0])
-            roll_mods = json.loads(row[1])
-            ac_mod = row[2]
+    # Remove contributions using atomic JSON updates
+    stat_mods = contributions.get('stat_modifiers', {})
+    for stat, value in stat_mods.items():
+        await db.execute(f"""
+            UPDATE characters
+            SET stat_modifiers = json_set(
+                stat_modifiers,
+                '$.{stat}',
+                COALESCE(json_extract(stat_modifiers, '$.{stat}'), 0) - ?
+            )
+            WHERE name = ?
+        """, (value, character_name))
 
-        # Remove contributions
-        for stat, value in contributions.get('stat_modifiers', {}).items():
-            stat_mods[stat] -= value
+    roll_mods = contributions.get('roll_modifiers', {})
+    for roll_type, value in roll_mods.items():
+        await db.execute(f"""
+            UPDATE characters
+            SET roll_modifiers = json_set(
+                roll_modifiers,
+                '$.{roll_type}',
+                COALESCE(json_extract(roll_modifiers, '$.{roll_type}'), 0) - ?
+            )
+            WHERE name = ?
+        """, (value, character_name))
 
-        for roll_type, value in contributions.get('roll_modifiers', {}).items():
-            roll_mods[roll_type] -= value
-
-        ac_mod -= contributions.get('ac_modifier', 0)
-
-        # Update character
+    ac_modifier_value = contributions.get('ac_modifier', 0)
+    if ac_modifier_value != 0:
         await db.execute("""
             UPDATE characters
-            SET stat_modifiers = ?, roll_modifiers = ?, ac_modifier = ?
+            SET ac_modifier = ac_modifier - ?
             WHERE name = ?
-        """, (json.dumps(stat_mods), json.dumps(roll_mods), ac_mod, character_name))
+        """, (ac_modifier_value, character_name))
 
-        # Delete effect
-        if isinstance(effect_identifier, int):
-            await db.execute(delete_query, (effect_identifier,))
-        else:
-            await db.execute(delete_query, (effect_identifier, character_name))
+    # Delete effect
+    if isinstance(effect_identifier, int):
+        await db.execute(delete_query, (effect_identifier,))
+    else:
+        await db.execute(delete_query, (effect_identifier, character_name))
 
-        await db.commit()
-        print(f"[EFFECT] Removed effect {effect_identifier} from {character_name}")
+    await db.commit()
+    print(f"[EFFECT] Removed effect {effect_identifier} from {character_name}")
 
 
 async def get_active_effects(character_name: str, db) -> list:

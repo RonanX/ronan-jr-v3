@@ -476,7 +476,7 @@ class FormCommands(commands.Cog):
                         "dot_type": dot_type or ""
                     }
 
-                    await apply_effect(character, effect_data)
+                    await apply_effect(character, effect_data, db=db)
 
                 await db.commit()
 
