@@ -1116,7 +1116,7 @@ class MoveCommands(commands.Cog):
                 async with db.execute("""
                     SELECT category, star_cost, mp_cost, hp_cost, stat, damage,
                            hits, targets, save_type, save_dc, save_effect,
-                           half_on_save, bonus_on_hit, duration, description, uses, cooldown, self_effect, target_effect
+                           half_on_save, bonus_on_hit, duration, description, uses, cooldown, self_effect, target_effect, max_uses
                     FROM movesets
                     WHERE character_name = ? AND form_name = ? AND move_name = ?
                 """, (character, current_form, move_name)) as cursor:
@@ -1150,11 +1150,12 @@ class MoveCommands(commands.Cog):
                     "uses": move_row[15],
                     "cooldown": move_row[16] or 0,
                     "self_effect": move_row[17],
-                    "target_effect": move_row[18]
+                    "target_effect": move_row[18],
+                    "max_uses": move_row[19]
                 }
 
-                # CRITICAL: Check limited uses (if uses is defined and == 0, no uses left)
-                if move["uses"] is not None and move["uses"] == 0:
+                # CRITICAL: Check limited uses (only block if max_uses is set AND uses is depleted)
+                if move.get("max_uses") and move["max_uses"] > 0 and (move.get("uses") or 0) <= 0:
                     print(f"[ERROR] No uses remaining for '{move_name}'")
                     await interaction.followup.send(
                         f"❌ You are out of uses for this move!",
@@ -1358,8 +1359,8 @@ class MoveCommands(commands.Cog):
                 cost_parts.append(f"⭐ **-{move['star_cost']}**")
 
             # Add remaining uses if limited
-            if move["uses"] is not None and move["uses"] >= 0:
-                cost_parts.append(f"🔋 **{move['uses']} Uses Left**")
+            if move.get("max_uses") and move["max_uses"] > 0:
+                cost_parts.append(f"🔋 **{move.get('uses', 0)}/{move['max_uses']} Uses**")
 
             status_line = " | ".join(cost_parts) if cost_parts else ""
 
@@ -1497,8 +1498,8 @@ class MoveCommands(commands.Cog):
             cost_parts.append(f"⚠️ **Effect:** {effect_name}")
 
         # Add remaining uses if limited
-        if move["uses"] is not None and move["uses"] >= 0:
-            cost_parts.append(f"🔋 **{move['uses']} Uses Left**")
+        if move.get("max_uses") and move["max_uses"] > 0:
+            cost_parts.append(f"🔋 **{move.get('uses', 0)}/{move['max_uses']} Uses**")
 
         status_line = " | ".join(cost_parts) if cost_parts else ""
 
@@ -1743,8 +1744,8 @@ class MoveCommands(commands.Cog):
             cost_parts.append(f"⚠️ **Effect:** {effect_name}")
 
         # Add remaining uses if limited
-        if move["uses"] is not None and move["uses"] >= 0:
-            cost_parts.append(f"🔋 **{move['uses']} Uses Left**")
+        if move.get("max_uses") and move["max_uses"] > 0:
+            cost_parts.append(f"🔋 **{move.get('uses', 0)}/{move['max_uses']} Uses**")
 
         status_line = " | ".join(cost_parts) if cost_parts else ""
 
@@ -1920,8 +1921,8 @@ class MoveCommands(commands.Cog):
             cost_parts.append(f"⭐ **-{move['star_cost']}**")
 
         # Add remaining uses if limited
-        if move["uses"] is not None and move["uses"] >= 0:
-            cost_parts.append(f"🔋 **{move['uses']} Uses Left**")
+        if move.get("max_uses") and move["max_uses"] > 0:
+            cost_parts.append(f"🔋 **{move.get('uses', 0)}/{move['max_uses']} Uses**")
 
         status_line = " | ".join(cost_parts) if cost_parts else ""
 
