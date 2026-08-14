@@ -2273,7 +2273,8 @@ class CombatCommands(commands.Cog):
         character="Character making the check",
         skill="Skill to use",
         tier="Difficulty tier (1=Easy, 2=Medium, 3=Hard)",
-        note="Optional note/label for the roll"
+        note="Optional note/label for the roll",
+        hide_tier="Hide tier in output for suspense (default: false)"
     )
     @app_commands.choices(skill=[
         app_commands.Choice(name="Athletics (STR)", value="athletics"),
@@ -2306,7 +2307,8 @@ class CombatCommands(commands.Cog):
         character: str,
         skill: str,
         tier: int,
-        note: str = None
+        note: str = None,
+        hide_tier: bool = False
     ):
         """Roll a d6 pool skill check"""
         try:
@@ -2392,7 +2394,7 @@ class CombatCommands(commands.Cog):
             dice_display = format_dice(skill_result.all_dice, skill_result.roll)
 
             # Build description
-            # Format: [note:] skill_name → {num}d6k1 → (dice) → result
+            # Format: [note:] skill_name → {num}d6k1 → (dice) → [tier info] → result
             parts = []
             if note:
                 parts.append(f"**{note}:**")
@@ -2403,8 +2405,15 @@ class CombatCommands(commands.Cog):
             parts.append("→")
             parts.append(dice_display)
             parts.append("→")
-            parts.append(f"{skill_result.roll} vs Tier {tier}")
-            parts.append("→")
+
+            # Show tier info unless hidden
+            if not hide_tier:
+                parts.append(f"{skill_result.roll} vs Tier {tier}")
+                parts.append("→")
+            else:
+                parts.append(f"**{skill_result.roll}**")
+                parts.append("→")
+
             parts.append(outcome)
 
             embed.description = " ".join(parts)
@@ -2420,13 +2429,13 @@ class CombatCommands(commands.Cog):
                 ephemeral=True
             )
 
-    @app_commands.command(name="save", description="Roll a saving throw (d20 + stat + prof vs tier)")
+    @app_commands.command(name="save", description="Roll a d6 pool saving throw (2d6kl1 + modifiers)")
     @app_commands.describe(
         character="Character making the save",
         save_type="Type of save (STR/DEX/CON/INT/WIS/CHA)",
-        tier="Save difficulty tier: 1 (easy/10+), 2 (medium/14+), 3 (hard/18+)",
+        tier="Save difficulty tier: 1 (easy), 2 (medium), 3 (hard)",
         note="Optional note (e.g., RESISTING POISON)",
-        hide_tier="Hide tier in output (default: false)"
+        hide_tier="Hide tier in output for suspense (default: false)"
     )
     @app_commands.choices(
         save_type=[
@@ -2450,7 +2459,8 @@ class CombatCommands(commands.Cog):
         character: str,
         save_type: str,
         tier: int,
-        note: str = None
+        note: str = None,
+        hide_tier: bool = False
     ):
         """Roll a d6 pool saving throw (2d6kl1 + modifiers)"""
         try:
@@ -2528,7 +2538,7 @@ class CombatCommands(commands.Cog):
             dice_display = format_dice(save_result.all_dice, save_result.roll)
 
             # Build description
-            # Format: [note:] emoji SAVE_TYPE Save → {num}d6kl1 → (dice) → result
+            # Format: [note:] emoji SAVE_TYPE Save → {num}d6kl1 → (dice) → [tier info] → result
             parts = []
             if note:
                 parts.append(f"**{note}:**")
@@ -2539,8 +2549,15 @@ class CombatCommands(commands.Cog):
             parts.append("→")
             parts.append(dice_display)
             parts.append("→")
-            parts.append(f"{save_result.roll} vs Tier {tier}")
-            parts.append("→")
+
+            # Show tier info unless hidden
+            if not hide_tier:
+                parts.append(f"{save_result.roll} vs Tier {tier}")
+                parts.append("→")
+            else:
+                parts.append(f"**{save_result.roll}**")
+                parts.append("→")
+
             parts.append(outcome)
 
             embed.description = " ".join(parts)
