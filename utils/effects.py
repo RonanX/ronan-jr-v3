@@ -42,17 +42,18 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
         if existing:
             effect_id, old_contributions_json = existing
             old_contributions = json.loads(old_contributions_json) if old_contributions_json else {}
-            new_contributions = effect_data.get('contributions', {})
+            new_contributions = effect_data.get('contributions', {}).copy()
 
-            # Get current modifiers
+            # Get current modifiers and base stats
             async with db.execute("""
-                SELECT stat_modifiers, roll_modifiers, ac_modifier
+                SELECT stat_modifiers, roll_modifiers, ac_modifier, base_stats
                 FROM characters WHERE name = ?
             """, (character_name,)) as cursor:
                 row = await cursor.fetchone()
                 stat_mods = json.loads(row[0])
                 roll_mods = json.loads(row[1])
                 ac_mod = row[2]
+                base_stats = json.loads(row[3]) if row[3] else {}
 
             # Remove old contributions
             for stat, value in old_contributions.get('stat_modifiers', {}).items():
@@ -61,9 +62,18 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
                 roll_mods[roll_type] -= value
             ac_mod -= old_contributions.get('ac_modifier', 0)
 
-            # Add new contributions
+            # Add new contributions (handle HALVE markers)
             for stat, value in new_contributions.get('stat_modifiers', {}).items():
-                stat_mods[stat] += value
+                if value == "HALVE":
+                    # Calculate halving modifier
+                    base_value = base_stats.get(stat, 1)
+                    halved_value = base_value // 2
+                    halving_modifier = halved_value - base_value
+                    # Replace HALVE marker with actual value for storage
+                    new_contributions['stat_modifiers'][stat] = halving_modifier
+                    stat_mods[stat] += halving_modifier
+                else:
+                    stat_mods[stat] += value
             for roll_type, value in new_contributions.get('roll_modifiers', {}).items():
                 roll_mods[roll_type] += value
             ac_mod += new_contributions.get('ac_modifier', 0)
@@ -96,18 +106,51 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
     # Apply contributions using atomic JSON updates
     contributions = effect_data.get('contributions', {})
 
-    # Build separate UPDATE for each JSON field to update atomically
+    # Handle stat modifiers (including HALVE logic)
     stat_mods = contributions.get('stat_modifiers', {})
     for stat, value in stat_mods.items():
-        await db.execute(f"""
-            UPDATE characters
-            SET stat_modifiers = json_set(
-                stat_modifiers,
-                '$.{stat}',
-                COALESCE(json_extract(stat_modifiers, '$.{stat}'), 0) + ?
-            )
-            WHERE name = ?
-        """, (value, character_name))
+        if value == "HALVE":
+            # Special halving logic: read base stat, calculate halving modifier, store it
+            async with db.execute(f"""
+                SELECT base_stats, stat_modifiers FROM characters WHERE name = ?
+            """, (character_name,)) as cursor:
+                row = await cursor.fetchone()
+                base_stats = json.loads(row[0]) if row[0] else {}
+                current_mods = json.loads(row[1]) if row[1] else {}
+
+                # Get base stat value (1-5 range)
+                base_value = base_stats.get(stat, 1)
+                # Calculate halved value (round down)
+                halved_value = base_value // 2
+                # Modifier is difference: halved - base (will be negative)
+                halving_modifier = halved_value - base_value
+
+                # Store actual modifier value in contributions for removal tracking
+                if 'stat_modifiers' not in contributions:
+                    contributions['stat_modifiers'] = {}
+                contributions['stat_modifiers'][stat] = halving_modifier
+
+                # Apply the modifier
+                await db.execute(f"""
+                    UPDATE characters
+                    SET stat_modifiers = json_set(
+                        stat_modifiers,
+                        '$.{stat}',
+                        COALESCE(json_extract(stat_modifiers, '$.{stat}'), 0) + ?
+                    )
+                    WHERE name = ?
+                """, (halving_modifier, character_name))
+        else:
+            # Normal numeric modifier
+            await db.execute(f"""
+                UPDATE characters
+                SET stat_modifiers = json_set(
+                    stat_modifiers,
+                    '$.{stat}',
+                    COALESCE(json_extract(stat_modifiers, '$.{stat}'), 0) + ?
+                )
+                WHERE name = ?
+            """, (value, character_name))
 
     roll_mods = contributions.get('roll_modifiers', {})
     for roll_type, value in roll_mods.items():
@@ -133,8 +176,8 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
     await db.execute("""
         INSERT INTO effects (character_name, effect_name, emoji, available_until_round, contributions,
                             dot_damage, dot_type, dot_value, resource_type, resource_change, resource_value,
-                            stackable, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            stackable, note, damage_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         character_name,
         effect_data['name'],
@@ -148,7 +191,8 @@ async def apply_effect(character_name: str, effect_data: Dict[str, Any], db):
         effect_data.get('resource_change', 0),  # Legacy field
         effect_data.get('resource_value', '0'),
         1 if stackable else 0,
-        effect_data.get('note', '')
+        effect_data.get('note', ''),
+        effect_data.get('damage_type', 'physical')
     ))
 
     await db.commit()
@@ -298,6 +342,7 @@ def get_preset_effect(effect_name: str, duration: int, **kwargs) -> Dict[str, An
             "emoji": "🩸",
             "contributions": {},
             "dot_value": "0",  # Must be set by caller
+            "damage_type": "physical",  # Can be overridden (fire, cold, poison, etc.)
             "stackable": True,
             "note": ""  # Optional note like "fire", "bleed", "venom"
         },
@@ -306,6 +351,7 @@ def get_preset_effect(effect_name: str, duration: int, **kwargs) -> Dict[str, An
             "emoji": "🤢",
             "contributions": {},
             "dot_value": "3",
+            "damage_type": "poison",
             "stackable": False,
             "note": ""
         },
@@ -375,9 +421,73 @@ def get_preset_effect(effect_name: str, duration: int, **kwargs) -> Dict[str, An
         "slowed": {
             "name": "slowed",
             "emoji": "🐌",
-            "contributions": {},
+            "contributions": {
+                "stat_modifiers": {"dex": "HALVE"}  # Special marker for halving logic
+            },
             "stackable": False,
             "note": ""
+        },
+        "weakened": {
+            "name": "weakened",
+            "emoji": "💪🔽",
+            "contributions": {
+                "stat_modifiers": {"str": "HALVE"}  # Special marker for halving logic
+            },
+            "stackable": False,
+            "note": ""
+        },
+        "exposed": {
+            "name": "exposed",
+            "emoji": "🛡️🔽",
+            "contributions": {
+                "roll_modifiers": {"incoming_modifier": 2}
+            },
+            "stackable": False,
+            "note": ""
+        },
+        "grappled": {
+            "name": "grappled",
+            "emoji": "🤼",
+            "contributions": {},  # Narrative only
+            "stackable": False,
+            "note": ""
+        },
+        "frightened": {
+            "name": "frightened",
+            "emoji": "😰",
+            "contributions": {
+                "roll_modifiers": {"attack_modifier": -2}
+            },
+            "stackable": False,
+            "note": ""  # Should specify source via kwargs
+        },
+        "silenced": {
+            "name": "silenced",
+            "emoji": "🔇",
+            "contributions": {},  # Narrative only - prevents verbal components
+            "stackable": False,
+            "note": ""
+        },
+        "charmed": {
+            "name": "charmed",
+            "emoji": "💖",
+            "contributions": {},  # Narrative only - can't attack charmer
+            "stackable": False,
+            "note": ""  # Should specify charmer via kwargs
+        },
+        "vulnerable": {
+            "name": "vulnerable",
+            "emoji": "💥",
+            "contributions": {},  # Damage multiplier handled in move_execution.py
+            "stackable": False,
+            "note": ""  # Must specify damage type via kwargs (e.g., "fire", "cold")
+        },
+        "resistant": {
+            "name": "resistant",
+            "emoji": "🛡️",
+            "contributions": {},  # Damage multiplier handled in move_execution.py
+            "stackable": False,
+            "note": ""  # Must specify damage type via kwargs (e.g., "fire", "cold")
         },
         "restrained": {
             "name": "restrained",

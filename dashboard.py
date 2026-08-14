@@ -275,6 +275,7 @@ class RonanDashboard(ctk.CTk):
         move_params = [
             ("Form Name", "form_name"),
             ("Damage Formula", "damage_formula"),
+            ("Damage Type", "damage_type"),
             ("Hits", "hits"),
             ("MP Cost", "mp_cost"),
             ("HP Cost", "hp_cost"),
@@ -298,9 +299,11 @@ class RonanDashboard(ctk.CTk):
             lbl = ctk.CTkLabel(row_frame, text=label, width=150, anchor="w")
             lbl.grid(row=0, column=0, padx=(0, 10))
 
-            # Custom placeholder for damage_formula field
+            # Custom placeholders
             if key == "damage_formula":
                 placeholder = "e.g., 4 fire, 2d6+cha slashing, +str"
+            elif key == "damage_type":
+                placeholder = "physical, fire, cold, lightning, poison, etc."
             else:
                 placeholder = label
 
@@ -836,14 +839,14 @@ class RonanDashboard(ctk.CTk):
             self.current_move_form = form_name
 
             self.cursor.execute("""
-                SELECT damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula
+                SELECT damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula, damage_type
                 FROM movesets
                 WHERE character_name = ? AND move_name = ? AND form_name = ?
             """, (self.current_character, move_name, form_name))
 
             row = self.cursor.fetchone()
             if row:
-                damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula = row
+                damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula, damage_type = row
 
                 # Set form name
                 self.move_entries["form_name"].delete(0, "end")
@@ -858,6 +861,10 @@ class RonanDashboard(ctk.CTk):
                     self.move_entries["damage_formula"].insert(0, str(damage))
                 else:
                     self.move_entries["damage_formula"].insert(0, "")
+
+                # Load damage_type
+                self.move_entries["damage_type"].delete(0, "end")
+                self.move_entries["damage_type"].insert(0, str(damage_type) if damage_type else "physical")
 
                 self.move_entries["hits"].delete(0, "end")
                 self.move_entries["hits"].insert(0, str(hits) if hits is not None else "1")
@@ -1366,15 +1373,19 @@ class RonanDashboard(ctk.CTk):
                 # Get damage_formula, set damage=0 for new system
                 damage_formula_value = self.move_entries["damage_formula"].get().strip() if self.move_entries["damage_formula"].get() else None
 
+                # Get damage_type
+                damage_type_value = self.move_entries["damage_type"].get().strip() if self.move_entries["damage_type"].get() else "physical"
+
                 self.cursor.execute("""
                     UPDATE movesets
-                    SET damage = 0, damage_formula = ?, hits = ?, mp_cost = ?, hp_cost = ?,
+                    SET damage = 0, damage_formula = ?, damage_type = ?, hits = ?, mp_cost = ?, hp_cost = ?,
                         star_cost = ?, stat = ?, bonus_on_hit = ?, save_effect = ?,
                         self_effect = ?, target_effect = ?,
                         description = ?, uses = ?, max_uses = ?, duration = ?, cooldown = ?, form_name = ?
                     WHERE character_name = ? AND move_name = ? AND form_name = ?
                 """, (
                     damage_formula_value,
+                    damage_type_value,
                     self.safe_int(self.move_entries["hits"].get(), 1),
                     self.safe_int(self.move_entries["mp_cost"].get()),
                     self.safe_int(self.move_entries["hp_cost"].get()),

@@ -1019,7 +1019,7 @@ class MoveCommands(commands.Cog):
             from utils.move_execution import (
                 validate_costs, determine_move_type, calculate_multihit_result,
                 calculate_attack_damage, calculate_save_damage, calculate_save_dc,
-                create_health_bar, format_move_costs
+                create_health_bar, format_move_costs, apply_damage_type_modifiers
             )
 
             async with aiosqlite.connect('database/ronan.db') as db:
@@ -1116,7 +1116,7 @@ class MoveCommands(commands.Cog):
                 async with db.execute("""
                     SELECT category, star_cost, mp_cost, hp_cost, stat, damage,
                            hits, targets, save_type, save_dc, save_effect,
-                           half_on_save, bonus_on_hit, duration, description, uses, cooldown, self_effect, target_effect, max_uses
+                           half_on_save, bonus_on_hit, duration, description, uses, cooldown, self_effect, target_effect, max_uses, damage_formula
                     FROM movesets
                     WHERE character_name = ? AND form_name = ? AND move_name = ?
                 """, (character, current_form, move_name)) as cursor:
@@ -1151,7 +1151,8 @@ class MoveCommands(commands.Cog):
                     "cooldown": move_row[16] or 0,
                     "self_effect": move_row[17],
                     "target_effect": move_row[18],
-                    "max_uses": move_row[19]
+                    "max_uses": move_row[19],
+                    "damage_formula": move_row[20]
                 }
 
                 # CRITICAL: Check limited uses (only block if max_uses is set AND uses is depleted)
@@ -1225,7 +1226,7 @@ class MoveCommands(commands.Cog):
                     await self._execute_attack_move(
                         interaction, db, character, move_name, target, move,
                         effective_stat, temp_roll_mods, current_stars, current_mp, current_hp, in_combat,
-                        deployable_id, attacker_display_name, current_form, is_deployable
+                        deployable_id, attacker_display_name, current_form, is_deployable, base_stats
                     )
                 elif move_type == "save":
                     await self._execute_save_move(
@@ -1251,7 +1252,7 @@ class MoveCommands(commands.Cog):
     async def _execute_attack_move(
         self, interaction, db, character, move_name, target, move,
         effective_stat, roll_mods, current_stars, current_mp, current_hp, in_combat,
-        deployable_id, attacker_display_name, current_form: str, is_deployable: bool
+        deployable_id, attacker_display_name, current_form: str, is_deployable: bool, base_stats: dict
     ):
         """Execute an attack-based move"""
         from utils.dice import roll_dice_pool, check_result
@@ -1259,6 +1260,7 @@ class MoveCommands(commands.Cog):
             calculate_multihit_result, calculate_attack_damage,
             create_health_bar, format_move_costs, CATEGORY_EMOJIS
         )
+        from utils.damage import format_damage_breakdown
 
         # Get target data (check character first, then deployable)
         is_deployable_target = False
@@ -1382,19 +1384,27 @@ class MoveCommands(commands.Cog):
             return
 
         # Calculate damage
-        damage_per_hit, total_damage = calculate_attack_damage(
-            move["damage"], effective_stat, hits_landed, is_crit
+        damage_per_hit, total_damage, damage_breakdown = calculate_attack_damage(
+            move["damage"], effective_stat, hits_landed, is_crit,
+            damage_formula=move.get("damage_formula"),
+            stats_dict=base_stats
+        )
+
+        # Apply damage type modifiers (vulnerable/resistant)
+        damage_type = move.get("damage_type", "physical")
+        final_damage, damage_modifier_text = await apply_damage_type_modifiers(
+            total_damage, damage_type, target, db
         )
 
         # Project new HP
-        projected_hp = max(0, target_hp - total_damage)
+        projected_hp = max(0, target_hp - final_damage)
 
         # Check damage threshold
         threshold_exceeded = False
         if target_threshold_damage is not None and target_threshold_dc is not None:
-            if total_damage >= target_threshold_damage:
+            if final_damage >= target_threshold_damage:
                 threshold_exceeded = True
-                print(f"[THRESHOLD] {target} took {total_damage} damage (threshold: {target_threshold_damage}) - CON save DC {target_threshold_dc} required!")
+                print(f"[THRESHOLD] {target} took {final_damage} damage (threshold: {target_threshold_damage}) - CON save DC {target_threshold_dc} required!")
 
         # Spend resources
         # Update stars (from deployable if using deployable, else from character)
@@ -1464,6 +1474,17 @@ class MoveCommands(commands.Cog):
             result_text += " 🔥 CRIT"
 
         # Line 1: Result (different format for single vs multihit)
+        # Build damage display with breakdown if available
+        if damage_breakdown and damage_breakdown.get("breakdown"):
+            breakdown_str = format_damage_breakdown(damage_breakdown["breakdown"])
+            damage_display = f"{final_damage} damage ({breakdown_str})"
+            if damage_modifier_text:
+                damage_display += f" {damage_modifier_text}"
+        else:
+            damage_display = f"{final_damage} Dmg"
+            if damage_modifier_text:
+                damage_display += f" {damage_modifier_text}"
+
         if total_hits > 1:
             # Multihit attack: show individual hit results
             hit_results = []
@@ -1472,10 +1493,10 @@ class MoveCommands(commands.Cog):
                     hit_results.append("✅")
                 else:
                     hit_results.append("❌")
-            result_line = f"🎯 **Hits:** [{' '.join(hit_results)}] ➔ **{total_damage} Dmg**"
+            result_line = f"🎯 **Hits:** [{' '.join(hit_results)}] ➔ **{damage_display}**"
         else:
             # Single hit attack
-            result_line = f"🎯 **Highest: {highest}** ({result_text}) ➔ **{total_damage} Dmg**"
+            result_line = f"🎯 **Highest: {highest}** ({result_text}) ➔ **{damage_display}**"
 
         # Line 2: Status/Cost (show costs or healing)
         cost_parts = []
@@ -1598,8 +1619,9 @@ class MoveCommands(commands.Cog):
         from utils.dice import roll_save
         from utils.move_execution import (
             calculate_save_damage, calculate_save_dc,
-            format_move_costs, CATEGORY_EMOJIS
+            format_move_costs, CATEGORY_EMOJIS, apply_damage_type_modifiers
         )
+        from utils.damage import format_damage_breakdown
 
         # Calculate DC
         if move["save_dc"]:
@@ -1642,19 +1664,27 @@ class MoveCommands(commands.Cog):
         save_success = save_result.success
 
         # Calculate damage
-        total_damage = calculate_save_damage(
-            move["damage"], effective_stat, save_success, bool(move["half_on_save"])
+        total_damage, damage_breakdown = calculate_save_damage(
+            move["damage"], effective_stat, save_success, bool(move["half_on_save"]),
+            damage_formula=move.get("damage_formula"),
+            stats_dict=base_stats
+        )
+
+        # Apply damage type modifiers (vulnerable/resistant)
+        damage_type = move.get("damage_type", "physical")
+        final_damage, damage_modifier_text = await apply_damage_type_modifiers(
+            total_damage, damage_type, target, db
         )
 
         # Project new HP
-        projected_hp = max(0, target_hp - total_damage)
+        projected_hp = max(0, target_hp - final_damage)
 
         # Check damage threshold
         threshold_exceeded = False
         if target_threshold_damage is not None and target_threshold_dc is not None:
-            if total_damage >= target_threshold_damage:
+            if final_damage >= target_threshold_damage:
                 threshold_exceeded = True
-                print(f"[THRESHOLD] {target} took {total_damage} damage (threshold: {target_threshold_damage}) - CON save DC {target_threshold_dc} required!")
+                print(f"[THRESHOLD] {target} took {final_damage} damage (threshold: {target_threshold_damage}) - CON save DC {target_threshold_dc} required!")
 
         # Spend resources
         # Update stars (from deployable if using deployable, else from character)
@@ -1721,7 +1751,18 @@ class MoveCommands(commands.Cog):
             outcome = "Fail"
 
         # Line 1: Result
-        result_line = f"🛡️ **{save_stat.upper()} Save: {save_result.total}** ({outcome}) ➔ **{total_damage} Dmg**"
+        # Build damage display with breakdown if available
+        if damage_breakdown and damage_breakdown.get("breakdown"):
+            breakdown_str = format_damage_breakdown(damage_breakdown["breakdown"])
+            damage_display = f"{final_damage} damage ({breakdown_str})"
+            if damage_modifier_text:
+                damage_display += f" {damage_modifier_text}"
+        else:
+            damage_display = f"{final_damage} Dmg"
+            if damage_modifier_text:
+                damage_display += f" {damage_modifier_text}"
+
+        result_line = f"🛡️ **{save_stat.upper()} Save: {save_result.total}** ({outcome}) ➔ **{damage_display}**"
 
         # Line 2: Status/Cost (show costs or healing)
         cost_parts = []

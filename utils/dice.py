@@ -241,22 +241,20 @@ def roll_d6_save(stat_modifier: int, save_modifier: int, tier: int) -> SaveResul
     """
     Roll a d6 pool save with keep-lowest mechanic.
 
-    Base: 2d6kl1 (keep lowest - saves are defensive/harder)
-    Modified by: stat_modifier and save_modifier (advantage/disadvantage)
+    The stat IS the base dice pool. Saves have -1 disadvantage built in.
+    Formula: max(1, stat - 1 + save_modifier)
 
     Args:
-        stat_modifier: stat bonus as advantage/disadvantage (1-5 range from character stats)
+        stat_modifier: character's stat value (1-5 range) - this IS their base dice pool
         save_modifier: modifier from effects (positive = advantage, negative = disadvantage)
         tier: difficulty tier (1, 2, or 3)
 
     Returns:
         SaveResult with d6 pool details
     """
-    # Calculate total modifier (advantage/disadvantage stacks)
-    total_modifier = stat_modifier + save_modifier
-
-    # Base is 2 dice, modified by advantage/disadvantage
-    num_dice = max(2, 2 + total_modifier)
+    # Stat IS the base pool, saves have -1 disadvantage built in
+    # Roll modifiers stack with this built-in disadvantage
+    num_dice = max(1, stat_modifier - 1 + save_modifier)
 
     # Roll all dice
     all_dice = [random.randint(1, 6) for _ in range(num_dice)]
@@ -282,7 +280,7 @@ def roll_d6_save(stat_modifier: int, save_modifier: int, tier: int) -> SaveResul
     return SaveResult(
         success=success,
         roll=kept_die,
-        modifier=total_modifier,
+        modifier=save_modifier,  # Show only the effect modifiers, not the stat
         total=kept_die,  # For d6 saves, total = kept die
         dc=tier_data["clean"],
         outcome=outcome,
@@ -295,23 +293,22 @@ def roll_d6_skill(stat_modifier: int, proficiency: int, skill_modifier: int, tie
     """
     Roll a d6 pool skill check with keep-highest mechanic.
 
-    Base: 2d6k1 (keep highest - skills are offensive/easier)
-    Modified by: stat_modifier, proficiency, and skill_modifier (advantage/disadvantage)
+    The stat IS the base dice pool. Skills have +1 advantage built in.
+    Formula: max(1, stat + 1 + skill_modifier)
 
     Args:
-        stat_modifier: stat bonus as advantage/disadvantage (1-5 range from character stats)
-        proficiency: proficiency bonus as advantage dice (+0 to +2)
+        stat_modifier: character's stat value (1-5 range) - this IS their base dice pool
+        proficiency: proficiency bonus (only used for DC calculations, not dice pool)
         skill_modifier: modifier from effects (positive = advantage, negative = disadvantage)
         tier: difficulty tier (1, 2, or 3)
 
     Returns:
         SaveResult with d6 pool details (reusing SaveResult for consistency)
     """
-    # Calculate total modifier (advantage/disadvantage stacks)
-    total_modifier = stat_modifier + proficiency + skill_modifier
-
-    # Base is 2 dice, modified by advantage/disadvantage
-    num_dice = max(2, 2 + total_modifier)
+    # Stat IS the base pool, skills have +1 advantage built in
+    # Roll modifiers stack with this built-in advantage
+    # Proficiency does NOT add to dice pool (only affects DC)
+    num_dice = max(1, stat_modifier + 1 + skill_modifier)
 
     # Roll all dice
     all_dice = [random.randint(1, 6) for _ in range(num_dice)]
@@ -337,7 +334,7 @@ def roll_d6_skill(stat_modifier: int, proficiency: int, skill_modifier: int, tie
     return SaveResult(
         success=success,
         roll=kept_die,
-        modifier=total_modifier,
+        modifier=skill_modifier,  # Show only effect modifiers, not the stat or proficiency
         total=kept_die,  # For d6 skills, total = kept die
         dc=tier_data["clean"],
         outcome=outcome,

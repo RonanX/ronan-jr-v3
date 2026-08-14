@@ -515,16 +515,26 @@ class CombatCommands(commands.Cog):
                         damage = parse_value(dot_value_str, max_hp_for_calc)
 
                         if damage > 0:
+                            # Apply damage type modifiers (vulnerable/resistant)
+                            from utils.move_execution import apply_damage_type_modifiers
+                            damage_type = effect.get('damage_type', 'physical')
+                            final_damage, modifier_text = await apply_damage_type_modifiers(
+                                damage, damage_type, current_char_name, db
+                            )
+
                             # Apply DoT damage to HP
                             await db.execute("""
                                 UPDATE characters
                                 SET hp = MAX(0, hp - ?)
                                 WHERE name = ?
-                            """, (damage, current_char_name))
+                            """, (final_damage, current_char_name))
 
                             note = effect.get('note', '')
-                            dot_damage_applied.append((damage, note))
-                            print(f"[EFFECT] DoT ({note}) dealt {damage} damage to {current_char_name}")
+                            display_text = f"{final_damage}"
+                            if modifier_text:
+                                display_text += f" {modifier_text}"
+                            dot_damage_applied.append((display_text, note))
+                            print(f"[EFFECT] DoT ({note}) dealt {final_damage} damage to {current_char_name} {modifier_text}")
                     except ValueError as e:
                         print(f"[WARN] Failed to parse DoT value '{dot_value_str}': {e}")
 
@@ -643,7 +653,16 @@ class CombatCommands(commands.Cog):
                     effect_display = f"{effect_name}"
                     if note:
                         effect_display += f" ({note})"
-                    effect_display += f" [→ R{expires_at}]"
+
+                    # Calculate rounds remaining
+                    rounds_left = expires_at - round_num
+                    if rounds_left == 0:
+                        effect_display += " [ending this round]"
+                    elif rounds_left == 1:
+                        effect_display += " [1 round left]"
+                    else:
+                        effect_display += f" [{rounds_left} rounds left]"
+
                     effect_strs.append(effect_display)
                 description_parts.append("**Active Effects:**")
                 description_parts.extend([f"• {e}" for e in effect_strs])
