@@ -101,24 +101,71 @@ def check_result(highest_die: int, target_ac_tier: int) -> Literal["clean_hit", 
 
 @dataclass
 class SaveResult:
-    """Result from rolling a d20 save."""
+    """Result from rolling a save (d6 pool or legacy d20)."""
     success: bool
-    roll: int
+    roll: int  # For d20 legacy, or highest die for d6
     modifier: int
     total: int
     dc: int
     outcome: str = "fail"  # "clean_success", "success_with_cost", or "fail"
+    all_dice: List[int] = None  # For d6 pools
+    kept_dice: List[int] = None  # For d6 pools
+
+    def __post_init__(self):
+        if self.all_dice is None:
+            self.all_dice = []
+        if self.kept_dice is None:
+            self.kept_dice = []
 
 
-def get_save_dc_from_tier(tier: int) -> dict:
+def get_save_tier_thresholds(tier: int) -> dict:
     """
-    Map save tier to d20 DC thresholds.
+    Map save tier to d6 pool thresholds.
+
+    Saves use keep-lowest mechanic (inherently harder/defensive).
 
     Args:
         tier: 1 (easy), 2 (medium), or 3 (hard)
 
     Returns:
-        dict with 'clean', 'cost', and 'fail' thresholds
+        dict with 'clean', 'cost', 'fail' thresholds and 'label'
+    """
+    tiers = {
+        1: {"clean": 5, "cost": 3, "fail": 2, "label": "Easy"},
+        2: {"clean": 7, "cost": 5, "fail": 4, "label": "Medium"},
+        3: {"clean": 9, "cost": 7, "fail": 6, "label": "Hard"}
+    }
+    if tier not in tiers:
+        raise ValueError(f"Save tier must be 1, 2, or 3, got {tier}")
+    return tiers[tier]
+
+
+def get_skill_tier_thresholds(tier: int) -> dict:
+    """
+    Map skill tier to d6 pool thresholds.
+
+    Skills use keep-highest mechanic (inherently easier/offensive).
+
+    Args:
+        tier: 1 (easy), 2 (medium), or 3 (hard)
+
+    Returns:
+        dict with 'clean', 'cost', 'fail' thresholds and 'label'
+    """
+    tiers = {
+        1: {"clean": 5, "cost": 3, "fail": 2, "label": "Easy"},
+        2: {"clean": 7, "cost": 5, "fail": 4, "label": "Medium"},
+        3: {"clean": 9, "cost": 7, "fail": 6, "label": "Hard"}
+    }
+    if tier not in tiers:
+        raise ValueError(f"Skill tier must be 1, 2, or 3, got {tier}")
+    return tiers[tier]
+
+
+def get_save_dc_from_tier(tier: int) -> dict:
+    """
+    LEGACY: Map save tier to d20 DC thresholds.
+    Kept for backwards compatibility.
     """
     tiers = {
         1: {"clean": 10, "cost": 7, "fail": 6, "label": "Easy"},
@@ -188,3 +235,112 @@ def roll_save(stat_rating: int, proficiency: int, save_modifier: int, dc_or_tier
         outcome = "clean_success" if success else "fail"
 
     return SaveResult(success=success, roll=roll, modifier=stat_rating + proficiency, total=total, dc=dc, outcome=outcome)
+
+
+def roll_d6_save(stat_modifier: int, save_modifier: int, tier: int) -> SaveResult:
+    """
+    Roll a d6 pool save with keep-lowest mechanic.
+
+    Base: 2d6kl1 (keep lowest - saves are defensive/harder)
+    Modified by: stat_modifier and save_modifier (advantage/disadvantage)
+
+    Args:
+        stat_modifier: stat bonus converted to advantage/disadvantage (-2 to +2 typical)
+        save_modifier: modifier from effects (positive = advantage, negative = disadvantage)
+        tier: difficulty tier (1, 2, or 3)
+
+    Returns:
+        SaveResult with d6 pool details
+    """
+    # Calculate total modifier (advantage/disadvantage stacks)
+    total_modifier = stat_modifier + save_modifier
+
+    # Base is 2 dice, modified by advantage/disadvantage
+    num_dice = max(2, 2 + total_modifier)
+
+    # Roll all dice
+    all_dice = [random.randint(1, 6) for _ in range(num_dice)]
+
+    # Keep lowest 1 die (saves are defensive)
+    kept_die = min(all_dice)
+    kept_dice = [kept_die]
+
+    # Get tier thresholds
+    tier_data = get_save_tier_thresholds(tier)
+
+    # Determine outcome
+    if kept_die >= tier_data["clean"]:
+        success = True
+        outcome = "clean_success"
+    elif kept_die >= tier_data["cost"]:
+        success = True
+        outcome = "success_with_cost"
+    else:
+        success = False
+        outcome = "fail"
+
+    return SaveResult(
+        success=success,
+        roll=kept_die,
+        modifier=total_modifier,
+        total=kept_die,  # For d6 saves, total = kept die
+        dc=tier_data["clean"],
+        outcome=outcome,
+        all_dice=all_dice,
+        kept_dice=kept_dice
+    )
+
+
+def roll_d6_skill(stat_modifier: int, proficiency: int, skill_modifier: int, tier: int) -> SaveResult:
+    """
+    Roll a d6 pool skill check with keep-highest mechanic.
+
+    Base: 2d6k1 (keep highest - skills are offensive/easier)
+    Modified by: stat_modifier, proficiency, and skill_modifier (advantage/disadvantage)
+
+    Args:
+        stat_modifier: stat bonus converted to advantage/disadvantage (-2 to +2 typical)
+        proficiency: proficiency bonus as advantage dice (+0 to +2)
+        skill_modifier: modifier from effects (positive = advantage, negative = disadvantage)
+        tier: difficulty tier (1, 2, or 3)
+
+    Returns:
+        SaveResult with d6 pool details (reusing SaveResult for consistency)
+    """
+    # Calculate total modifier (advantage/disadvantage stacks)
+    total_modifier = stat_modifier + proficiency + skill_modifier
+
+    # Base is 2 dice, modified by advantage/disadvantage
+    num_dice = max(2, 2 + total_modifier)
+
+    # Roll all dice
+    all_dice = [random.randint(1, 6) for _ in range(num_dice)]
+
+    # Keep highest 1 die (skills are offensive)
+    kept_die = max(all_dice)
+    kept_dice = [kept_die]
+
+    # Get tier thresholds
+    tier_data = get_skill_tier_thresholds(tier)
+
+    # Determine outcome
+    if kept_die >= tier_data["clean"]:
+        success = True
+        outcome = "clean_success"
+    elif kept_die >= tier_data["cost"]:
+        success = True
+        outcome = "success_with_cost"
+    else:
+        success = False
+        outcome = "fail"
+
+    return SaveResult(
+        success=success,
+        roll=kept_die,
+        modifier=total_modifier,
+        total=kept_die,  # For d6 skills, total = kept die
+        dc=tier_data["clean"],
+        outcome=outcome,
+        all_dice=all_dice,
+        kept_dice=kept_dice
+    )

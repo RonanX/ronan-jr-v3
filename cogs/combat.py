@@ -2267,12 +2267,13 @@ class CombatCommands(commands.Cog):
                 ephemeral=True
             )
 
-    # Saving throw command
-    @app_commands.command(name="skill", description="Roll a skill check (d20 + stat + proficiency vs DC)")
+    # Skill check command
+    @app_commands.command(name="skill", description="Roll a d6 pool skill check (2d6k1 + modifiers)")
     @app_commands.describe(
         character="Character making the check",
         skill="Skill to use",
-        dc="Difficulty class"
+        tier="Difficulty tier (1=Easy, 2=Medium, 3=Hard)",
+        note="Optional note/label for the roll"
     )
     @app_commands.choices(skill=[
         app_commands.Choice(name="Athletics (STR)", value="athletics"),
@@ -2293,6 +2294,10 @@ class CombatCommands(commands.Cog):
         app_commands.Choice(name="Intimidation (CHA)", value="intimidation"),
         app_commands.Choice(name="Performance (CHA)", value="performance"),
         app_commands.Choice(name="Persuasion (CHA)", value="persuasion")
+    ], tier=[
+        app_commands.Choice(name="Tier 1 (Easy - 5+ clean, 3-4 cost)", value=1),
+        app_commands.Choice(name="Tier 2 (Medium - 7+ clean, 5-6 cost)", value=2),
+        app_commands.Choice(name="Tier 3 (Hard - 9+ clean, 7-8 cost)", value=3)
     ])
     @app_commands.autocomplete(character=character_autocomplete)
     async def skill_check(
@@ -2300,85 +2305,116 @@ class CombatCommands(commands.Cog):
         interaction: discord.Interaction,
         character: str,
         skill: str,
-        dc: int
+        tier: int,
+        note: str = None
     ):
-        """Roll a skill check"""
-        print(f"[CMD] {interaction.user.name} used /skill with params: character={character}, skill={skill}, dc={dc}")
+        """Roll a d6 pool skill check"""
         try:
+            from utils.dice import roll_d6_skill, get_skill_tier_thresholds
+
             # Map skills to stats
             skill_to_stat = {
-                "athletics": "str",
-                "acrobatics": "dex",
-                "sleight_of_hand": "dex",
-                "stealth": "dex",
-                "arcana": "int",
-                "history": "int",
-                "investigation": "int",
-                "nature": "int",
-                "religion": "int",
-                "animal_handling": "wis",
-                "insight": "wis",
-                "medicine": "wis",
-                "perception": "wis",
-                "survival": "wis",
-                "deception": "cha",
-                "intimidation": "cha",
-                "performance": "cha",
-                "persuasion": "cha"
+                "athletics": "str", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex",
+                "arcana": "int", "history": "int", "investigation": "int", "nature": "int", "religion": "int",
+                "animal_handling": "wis", "insight": "wis", "medicine": "wis", "perception": "wis", "survival": "wis",
+                "deception": "cha", "intimidation": "cha", "performance": "cha", "persuasion": "cha"
             }
 
             stat_name = skill_to_stat.get(skill, "str")
 
             async with aiosqlite.connect('database/ronan.db') as db:
-                # Get character's stat and proficiency
+                # Get character's stats and modifiers (case-insensitive)
                 async with db.execute(
-                    "SELECT stats_json, proficiency FROM characters WHERE name = ?",
+                    """SELECT stats_json, stat_modifiers, roll_modifiers, proficiency
+                       FROM characters WHERE LOWER(name) = LOWER(?)""",
                     (character,)
                 ) as cursor:
                     row = await cursor.fetchone()
                     if not row:
-                        print(f"[ERROR] Character '{character}' not found")
-                        await interaction.followup.send(
+                        await interaction.response.send_message(
                             f"❌ Character '{character}' not found!",
                             ephemeral=True
                         )
                         return
 
-                stats = json.loads(row[0])
-                proficiency = row[1]
-                stat_rating = stats.get(stat_name, 0)
+                stats_json = json.loads(row[0]) if row[0] else {}
+                stat_mods = json.loads(row[1]) if row[1] else {}
+                roll_mods = json.loads(row[2]) if row[2] else {}
+                proficiency = row[3] if row[3] else 0
 
-            # Roll 1d20
-            roll = random.randint(1, 20)
+            # Calculate stat modifier (convert stat rating to modifier)
+            base_stat = stats_json.get(stat_name, 10)
+            stat_mod_value = stat_mods.get(stat_name, 0)
+            effective_stat = base_stat + stat_mod_value
+            # Convert to advantage/disadvantage (-2 to +2 range)
+            stat_modifier = (effective_stat - 10) // 2
 
-            # For now, assume all characters are proficient in all skills
-            # TODO: Add skill proficiencies to character data
-            total = roll + stat_rating + proficiency
-            success = total >= dc
+            # Convert proficiency to advantage dice (0 to +2)
+            prof_modifier = min(2, proficiency // 2)
+
+            # Get any skill modifiers from effects (TODO: implement skill-specific modifiers)
+            skill_modifier = roll_mods.get('attack_modifier', 0)  # Reuse attack modifier for now
+
+            # Roll d6 skill (2d6k1 + modifiers)
+            skill_result = roll_d6_skill(stat_modifier, prof_modifier, skill_modifier, tier)
+            tier_data = get_skill_tier_thresholds(tier)
 
             # Format skill name nicely
             skill_display = skill.replace("_", " ").title()
 
-            print(f"[OK] {character} rolled {skill_display} check: {roll} + {stat_rating} + {proficiency} = {total} vs DC {dc} ({'SUCCESS' if success else 'FAILURE'})")
+            # Log command and result
+            logger.info(f"[CMD] {interaction.user.name} used /skill: character={character}, skill={skill}, tier={tier}, note={note}")
+            logger.info(f"[ROLL] {character} rolled {skill_display}: {len(skill_result.all_dice)}d6k1 = {skill_result.all_dice} → kept {skill_result.roll} vs Tier {tier} ({tier_data['label']}) → {skill_result.outcome}")
 
-            # Build embed
-            embed = discord.Embed(
-                title=f"🎲 {character} - {skill_display} Check",
-                color=discord.Color.blue()
-            )
+            # Color based on outcome
+            if skill_result.outcome == "clean_success":
+                color = 0x57F287  # Green
+                outcome = "✅ **SUCCESS**"
+            elif skill_result.outcome == "success_with_cost":
+                color = 0xFEE75C  # Yellow
+                outcome = "⚠️ **SUCCESS** (with cost)"
+            else:
+                color = 0xED4245  # Red
+                outcome = "❌ **FAILURE**"
 
-            embed.add_field(name="Roll", value=f"1d20 = {roll}", inline=True)
-            embed.add_field(name="Stat", value=f"{stat_name.upper()} +{stat_rating}", inline=True)
-            embed.add_field(name="Proficiency", value=f"+{proficiency}", inline=True)
-            embed.add_field(name="Total", value=f"**{total}**", inline=False)
-            embed.add_field(name="DC", value=f"{dc}", inline=True)
-            embed.add_field(name="Result", value=f"{'✅ SUCCESS' if success else '❌ FAILURE'}", inline=True)
+            embed = discord.Embed(color=color)
 
-            await interaction.response.send_message(embed=embed)
+            # Format dice display
+            def format_dice(all_dice, kept_die):
+                parts = []
+                for die in all_dice:
+                    if die == kept_die:
+                        parts.append(f"**{die}**")  # Bold the kept die
+                    else:
+                        parts.append(f"~~{die}~~")  # Strikethrough dropped dice
+                return f"({', '.join(parts)})"
+
+            dice_display = format_dice(skill_result.all_dice, skill_result.roll)
+
+            # Build description
+            # Format: [note:] skill_name → {num}d6k1 → (dice) → result
+            parts = []
+            if note:
+                parts.append(f"**{note}:**")
+
+            parts.append(f"🎲 {skill_display}")
+            parts.append("→")
+            parts.append(f"`{len(skill_result.all_dice)}d6k1`")
+            parts.append("→")
+            parts.append(dice_display)
+            parts.append("→")
+            parts.append(f"{skill_result.roll} vs Tier {tier}")
+            parts.append("→")
+            parts.append(outcome)
+
+            embed.description = " ".join(parts)
+
+            # Send ephemeral confirmation, then post to channel
+            await interaction.response.send_message("✓ Rolled skill", ephemeral=True, delete_after=2)
+            await interaction.channel.send(embed=embed)
 
         except Exception as e:
             logger.error(f"Error rolling skill check: {e}", exc_info=True)
-            print(f"[ERROR] /skill failed: {str(e)}")
             await interaction.response.send_message(
                 f"❌ Error: {str(e)}",
                 ephemeral=True
@@ -2402,9 +2438,9 @@ class CombatCommands(commands.Cog):
             app_commands.Choice(name="✨ CHA (Charisma)", value="cha")
         ],
         tier=[
-            app_commands.Choice(name="Tier 1 (Easy - 10+ clean, 7-9 cost)", value=1),
-            app_commands.Choice(name="Tier 2 (Medium - 14+ clean, 11-13 cost)", value=2),
-            app_commands.Choice(name="Tier 3 (Hard - 18+ clean, 15-17 cost)", value=3)
+            app_commands.Choice(name="Tier 1 (Easy - 5+ clean, 3-4 cost)", value=1),
+            app_commands.Choice(name="Tier 2 (Medium - 7+ clean, 5-6 cost)", value=2),
+            app_commands.Choice(name="Tier 3 (Hard - 9+ clean, 7-8 cost)", value=3)
         ]
     )
     @app_commands.autocomplete(character=character_autocomplete)
@@ -2414,146 +2450,108 @@ class CombatCommands(commands.Cog):
         character: str,
         save_type: str,
         tier: int,
-        note: str = None,
-        hide_tier: bool = False
+        note: str = None
     ):
-        """Roll a saving throw"""
-        print(f"[CMD] {interaction.user.name} used /save with params: character={character}, save_type={save_type}, tier={tier}, note={note}, hide_tier={hide_tier}")
-
-        # Defer ephemeral to hide "user used command" message
-        await interaction.response.defer(ephemeral=True)
-
+        """Roll a d6 pool saving throw (2d6kl1 + modifiers)"""
         try:
-            from utils.dice import roll_save, get_save_dc_from_tier
+            from utils.dice import roll_d6_save, get_save_tier_thresholds
 
-            # Save type emojis and names
+            # Save type emojis
             save_emojis = {
-                "str": "💪",
-                "dex": "🤸",
-                "con": "🛡️",
-                "int": "🧠",
-                "wis": "👁️",
-                "cha": "✨"
-            }
-
-            save_names = {
-                "str": "Strength",
-                "dex": "Dexterity",
-                "con": "Constitution",
-                "int": "Intelligence",
-                "wis": "Wisdom",
-                "cha": "Charisma"
+                "str": "💪", "dex": "🤸", "con": "🛡️",
+                "int": "🧠", "wis": "👁️", "cha": "✨"
             }
 
             async with aiosqlite.connect('database/ronan.db') as db:
-                # Get character's stats and modifiers
+                # Get character's stats and modifiers (case-insensitive)
                 async with db.execute(
-                    """SELECT base_stats, stat_modifiers, roll_modifiers, proficiency
-                       FROM characters WHERE name = ?""",
+                    """SELECT stats_json, stat_modifiers, roll_modifiers
+                       FROM characters WHERE LOWER(name) = LOWER(?)""",
                     (character,)
                 ) as cursor:
                     row = await cursor.fetchone()
                     if not row:
-                        print(f"[ERROR] Character '{character}' not found")
-                        await interaction.followup.send(
+                        await interaction.response.send_message(
                             f"❌ Character '{character}' not found!",
                             ephemeral=True
                         )
                         return
 
-                base_stats = json.loads(row[0]) if row[0] else {}
-                stat_mods = json.loads(row[1]) if row[1] else {"str": 0, "dex": 0, "con": 0, "int": 0, "wis": 0, "cha": 0}
-                roll_mods = json.loads(row[2]) if row[2] else {"attack_modifier": 0, "save_modifier": 0, "incoming_modifier": 0}
-                proficiency = row[3]
+                stats_json = json.loads(row[0]) if row[0] else {}
+                stat_mods = json.loads(row[1]) if row[1] else {}
+                roll_mods = json.loads(row[2]) if row[2] else {}
 
-            # Calculate effective stat
-            base_stat = base_stats.get(save_type, 0)
-            stat_mod = stat_mods.get(save_type, 0)
-            effective_stat = base_stat + stat_mod
+            # Calculate stat modifier (convert stat rating to modifier)
+            base_stat = stats_json.get(save_type, 10)
+            stat_mod_value = stat_mods.get(save_type, 0)
+            effective_stat = base_stat + stat_mod_value
+            # Convert to advantage/disadvantage (-2 to +2 range)
+            stat_modifier = (effective_stat - 10) // 2
 
-            # Get save modifier
-            save_modifier = roll_mods['save_modifier']
+            # Get save modifier from effects
+            save_modifier = roll_mods.get('save_modifier', 0)
 
-            # Roll d20 save using tier system
-            save_result = roll_save(effective_stat, proficiency, save_modifier, tier, use_tier=True)
-            success = save_result.success
+            # Roll d6 save (2d6kl1 + modifiers)
+            save_result = roll_d6_save(stat_modifier, save_modifier, tier)
+            tier_data = get_save_tier_thresholds(tier)
 
-            # Get tier info for display
-            tier_data = get_save_dc_from_tier(tier)
+            # Log command and result
+            logger.info(f"[CMD] {interaction.user.name} used /save: character={character}, save_type={save_type}, tier={tier}, note={note}")
+            logger.info(f"[ROLL] {character} rolled {len(save_result.all_dice)}d6kl1 = {save_result.all_dice} → kept {save_result.roll} vs Tier {tier} ({tier_data['label']}) → {save_result.outcome}")
 
-            print(f"[ROLL] {character} rolled 1d20 + {effective_stat} stat + {proficiency} prof + {save_modifier} save mod = {save_result.roll} + {save_result.modifier} = {save_result.total}")
-            print(f"[OK] {save_result.outcome} vs Tier {tier} ({tier_data['label']})")
+            # Build compact embed (similar to /roll style)
+            save_emoji = save_emojis.get(save_type, "🎲")
+
+            # Color based on outcome
+            if save_result.outcome == "clean_success":
+                color = 0x57F287  # Green
+                outcome = "✅ **SUCCESS**"
+            elif save_result.outcome == "success_with_cost":
+                color = 0xFEE75C  # Yellow
+                outcome = "⚠️ **SUCCESS** (with cost)"
+            else:
+                color = 0xED4245  # Red
+                outcome = "❌ **FAILURE**"
+
+            embed = discord.Embed(color=color)
+
+            # Format dice display
+            def format_dice(all_dice, kept_die):
+                parts = []
+                for die in all_dice:
+                    if die == kept_die:
+                        parts.append(f"**{die}**")  # Bold the kept die
+                    else:
+                        parts.append(f"~~{die}~~")  # Strikethrough dropped dice
+                return f"({', '.join(parts)})"
+
+            dice_display = format_dice(save_result.all_dice, save_result.roll)
 
             # Build description
-            save_emoji = save_emojis.get(save_type, "🎲")
-            save_name = save_names.get(save_type, save_type.upper())
-
-            # Title with emoji
-            title = f"{save_emoji} {character} - {save_name} Save"
-
-            # Build embed
-            embed = discord.Embed(
-                title=title,
-                color=discord.Color.green() if success else discord.Color.red()
-            )
-
+            # Format: [note:] emoji SAVE_TYPE Save → {num}d6kl1 → (dice) → result
+            parts = []
             if note:
-                embed.description = note.upper()
+                parts.append(f"**{note}:**")
 
-            # Result field - show d20 roll
-            result_text = f"1d20: **{save_result.roll}** + {save_result.modifier} = **{save_result.total}**"
-            if save_result.roll == 20:
-                result_text += " 🔥 **NAT 20!**"
-            embed.add_field(name="🎲 Result", value=result_text, inline=False)
+            parts.append(f"{save_emoji} {save_type.upper()} Save")
+            parts.append("→")
+            parts.append(f"`{len(save_result.all_dice)}d6kl1`")
+            parts.append("→")
+            parts.append(dice_display)
+            parts.append("→")
+            parts.append(f"{save_result.roll} vs Tier {tier}")
+            parts.append("→")
+            parts.append(outcome)
 
-            if not hide_tier:
-                tier_label = tier_data['label']
-                tier_info = f"Tier {tier} ({tier_label})"
-                if tier == 1:
-                    tier_info += "\n10+ clean, 7-9 cost, 1-6 fail"
-                elif tier == 2:
-                    tier_info += "\n14+ clean, 11-13 cost, 1-10 fail"
-                else:
-                    tier_info += "\n18+ clean, 15-17 cost, 1-14 fail"
-                embed.add_field(name="🎯 Difficulty", value=tier_info, inline=False)
+            embed.description = " ".join(parts)
 
-            # Outcome based on save_result.outcome
-            if save_result.outcome == "clean_success":
-                outcome_text = "✅ **CLEAN SUCCESS**"
-            elif save_result.outcome == "success_with_cost":
-                outcome_text = "⚠️ **SUCCESS WITH COST**"
-            else:
-                outcome_text = "❌ **FAILURE**"
-
-            # Check for nat 20 crit
-            if save_result.roll == 20 and success:
-                outcome_text += "\n⬆️ +1 advantage on next roll!"
-                # Apply advantage effect
-                from utils.effects import apply_effect
-                # Get current round
-                async with aiosqlite.connect('database/ronan.db') as db:
-                    async with db.execute("SELECT round_number FROM initiative WHERE combat_active = 1") as cursor:
-                        round_row = await cursor.fetchone()
-                        current_round = round_row[0] if round_row else 1
-
-                effect_data = {
-                    "name": "advantage",
-                    "emoji": "⬆️",
-                    "available_until_round": current_round + 1,
-                    "contributions": {"roll_modifiers": {"attack_modifier": 1}},
-                    "dot_value": "0"
-                }
-                await apply_effect(character, effect_data)
-
-            embed.add_field(name="Outcome", value=outcome_text, inline=False)
-
-            # Send to channel (not ephemeral reply)
+            # Send ephemeral confirmation, then post to channel
+            await interaction.response.send_message("✓ Rolled save", ephemeral=True, delete_after=2)
             await interaction.channel.send(embed=embed)
 
         except Exception as e:
             logger.error(f"Error rolling save: {e}", exc_info=True)
-            print(f"[ERROR] /save failed: {str(e)}")
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ Error: {str(e)}",
                 ephemeral=True
             )
