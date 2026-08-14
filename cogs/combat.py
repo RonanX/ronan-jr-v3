@@ -2296,9 +2296,9 @@ class CombatCommands(commands.Cog):
         app_commands.Choice(name="Performance (CHA)", value="performance"),
         app_commands.Choice(name="Persuasion (CHA)", value="persuasion")
     ], tier=[
-        app_commands.Choice(name="Tier 1 (Easy - 5+ clean, 3-4 cost)", value=1),
-        app_commands.Choice(name="Tier 2 (Medium - 7+ clean, 5-6 cost)", value=2),
-        app_commands.Choice(name="Tier 3 (Hard - 9+ clean, 7-8 cost)", value=3)
+        app_commands.Choice(name="Easy", value=1),
+        app_commands.Choice(name="Medium", value=2),
+        app_commands.Choice(name="Hard", value=3)
     ])
     @app_commands.autocomplete(character=character_autocomplete)
     async def skill_check(
@@ -2364,7 +2364,7 @@ class CombatCommands(commands.Cog):
 
             # Log command and result
             logger.info(f"[CMD] {interaction.user.name} used /skill: character={character}, skill={skill}, tier={tier}, note={note}")
-            logger.info(f"[ROLL] {character} rolled {skill_display}: {len(skill_result.all_dice)}d6k1 = {skill_result.all_dice} → kept {skill_result.roll} vs Tier {tier} ({tier_data['label']}) → {skill_result.outcome}")
+            logger.info(f"[ROLL] {character} rolled {skill_display}: {len(skill_result.all_dice)}d6k1 = {skill_result.all_dice} -> kept {skill_result.roll} vs Tier {tier} ({tier_data['label']}) -> {skill_result.outcome}")
 
             # Color based on outcome
             if skill_result.outcome == "clean_success":
@@ -2445,9 +2445,9 @@ class CombatCommands(commands.Cog):
             app_commands.Choice(name="✨ CHA (Charisma)", value="cha")
         ],
         tier=[
-            app_commands.Choice(name="Tier 1 (Easy - 5+ clean, 3-4 cost)", value=1),
-            app_commands.Choice(name="Tier 2 (Medium - 7+ clean, 5-6 cost)", value=2),
-            app_commands.Choice(name="Tier 3 (Hard - 9+ clean, 7-8 cost)", value=3)
+            app_commands.Choice(name="Easy", value=1),
+            app_commands.Choice(name="Medium", value=2),
+            app_commands.Choice(name="Hard", value=3)
         ]
     )
     @app_commands.autocomplete(character=character_autocomplete)
@@ -2503,7 +2503,7 @@ class CombatCommands(commands.Cog):
 
             # Log command and result
             logger.info(f"[CMD] {interaction.user.name} used /save: character={character}, save_type={save_type}, tier={tier}, note={note}")
-            logger.info(f"[ROLL] {character} rolled {len(save_result.all_dice)}d6kl1 = {save_result.all_dice} → kept {save_result.roll} vs Tier {tier} ({tier_data['label']}) → {save_result.outcome}")
+            logger.info(f"[ROLL] {character} rolled {len(save_result.all_dice)}d6kl1 = {save_result.all_dice} -> kept {save_result.roll} vs Tier {tier} ({tier_data['label']}) -> {save_result.outcome}")
 
             # Build compact embed (similar to /roll style)
             save_emoji = save_emojis.get(save_type, "🎲")
