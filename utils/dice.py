@@ -35,7 +35,7 @@ def roll_dice_pool(rating: int, modifier: int = 0) -> Tuple[int, List[int], bool
     - They cancel out net against each other
 
     Args:
-        rating: base stat rating (0-4)
+        rating: base stat rating (1-5)
         modifier: roll modifier from effects, advantage, disadvantage, etc. (can be negative)
 
     Returns:
@@ -245,7 +245,7 @@ def roll_d6_save(stat_modifier: int, save_modifier: int, tier: int) -> SaveResul
     Modified by: stat_modifier and save_modifier (advantage/disadvantage)
 
     Args:
-        stat_modifier: stat bonus converted to advantage/disadvantage (-2 to +2 typical)
+        stat_modifier: stat bonus as advantage/disadvantage (1-5 range from character stats)
         save_modifier: modifier from effects (positive = advantage, negative = disadvantage)
         tier: difficulty tier (1, 2, or 3)
 
@@ -299,7 +299,7 @@ def roll_d6_skill(stat_modifier: int, proficiency: int, skill_modifier: int, tie
     Modified by: stat_modifier, proficiency, and skill_modifier (advantage/disadvantage)
 
     Args:
-        stat_modifier: stat bonus converted to advantage/disadvantage (-2 to +2 typical)
+        stat_modifier: stat bonus as advantage/disadvantage (1-5 range from character stats)
         proficiency: proficiency bonus as advantage dice (+0 to +2)
         skill_modifier: modifier from effects (positive = advantage, negative = disadvantage)
         tier: difficulty tier (1, 2, or 3)

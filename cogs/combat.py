@@ -2344,12 +2344,10 @@ class CombatCommands(commands.Cog):
                 roll_mods = json.loads(row[2]) if row[2] else {}
                 proficiency = row[3] if row[3] else 0
 
-            # Calculate stat modifier (convert stat rating to modifier)
-            base_stat = stats_json.get(stat_name, 10)
+            # Calculate stat modifier (stats are already 1-5 modifiers, just add effect modifiers)
+            base_stat = stats_json.get(stat_name, 1)  # Default to 1 if missing
             stat_mod_value = stat_mods.get(stat_name, 0)
-            effective_stat = base_stat + stat_mod_value
-            # Convert to advantage/disadvantage (-2 to +2 range)
-            stat_modifier = (effective_stat - 10) // 2
+            stat_modifier = base_stat + stat_mod_value
 
             # Convert proficiency to advantage dice (0 to +2)
             prof_modifier = min(2, proficiency // 2)
@@ -2491,12 +2489,10 @@ class CombatCommands(commands.Cog):
                 stat_mods = json.loads(row[1]) if row[1] else {}
                 roll_mods = json.loads(row[2]) if row[2] else {}
 
-            # Calculate stat modifier (convert stat rating to modifier)
-            base_stat = stats_json.get(save_type, 10)
+            # Calculate stat modifier (stats are already 1-5 modifiers, just add effect modifiers)
+            base_stat = stats_json.get(save_type, 1)  # Default to 1 if missing
             stat_mod_value = stat_mods.get(save_type, 0)
-            effective_stat = base_stat + stat_mod_value
-            # Convert to advantage/disadvantage (-2 to +2 range)
-            stat_modifier = (effective_stat - 10) // 2
+            stat_modifier = base_stat + stat_mod_value
 
             # Get save modifier from effects
             save_modifier = roll_mods.get('save_modifier', 0)

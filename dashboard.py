@@ -192,7 +192,7 @@ class RonanDashboard(ctk.CTk):
         # Info label
         info = ctk.CTkLabel(
             tab,
-            text="Character Attributes (stored as JSON in base_stats)",
+            text="Character Attributes (1-5 range, stored as JSON in stats_json)",
             font=ctk.CTkFont(size=14, weight="bold")
         )
         info.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
@@ -274,7 +274,7 @@ class RonanDashboard(ctk.CTk):
 
         move_params = [
             ("Form Name", "form_name"),
-            ("Damage", "damage"),
+            ("Damage Formula", "damage_formula"),
             ("Hits", "hits"),
             ("MP Cost", "mp_cost"),
             ("HP Cost", "hp_cost"),
@@ -298,7 +298,13 @@ class RonanDashboard(ctk.CTk):
             lbl = ctk.CTkLabel(row_frame, text=label, width=150, anchor="w")
             lbl.grid(row=0, column=0, padx=(0, 10))
 
-            entry = ctk.CTkEntry(row_frame, placeholder_text=label)
+            # Custom placeholder for damage_formula field
+            if key == "damage_formula":
+                placeholder = "e.g., 4 fire, 2d6+cha slashing, +str"
+            else:
+                placeholder = label
+
+            entry = ctk.CTkEntry(row_frame, placeholder_text=placeholder)
             entry.grid(row=0, column=1, sticky="ew")
 
             self.move_entries[key] = entry
@@ -830,21 +836,28 @@ class RonanDashboard(ctk.CTk):
             self.current_move_form = form_name
 
             self.cursor.execute("""
-                SELECT damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect
+                SELECT damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula
                 FROM movesets
                 WHERE character_name = ? AND move_name = ? AND form_name = ?
             """, (self.current_character, move_name, form_name))
 
             row = self.cursor.fetchone()
             if row:
-                damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect = row
+                damage, hits, mp_cost, hp_cost, star_cost, stat, bonus_on_hit, save_effect, description, uses, max_uses, duration, cooldown, self_effect, target_effect, damage_formula = row
 
                 # Set form name
                 self.move_entries["form_name"].delete(0, "end")
                 self.move_entries["form_name"].insert(0, form_name)
 
-                self.move_entries["damage"].delete(0, "end")
-                self.move_entries["damage"].insert(0, str(damage) if damage is not None else "0")
+                # Load damage_formula if it exists, otherwise show legacy damage value
+                self.move_entries["damage_formula"].delete(0, "end")
+                if damage_formula:
+                    self.move_entries["damage_formula"].insert(0, str(damage_formula))
+                elif damage is not None and damage > 0:
+                    # Show legacy damage value for reference
+                    self.move_entries["damage_formula"].insert(0, str(damage))
+                else:
+                    self.move_entries["damage_formula"].insert(0, "")
 
                 self.move_entries["hits"].delete(0, "end")
                 self.move_entries["hits"].insert(0, str(hits) if hits is not None else "1")
@@ -1350,15 +1363,18 @@ class RonanDashboard(ctk.CTk):
 
                 description_text = self.move_description.get("1.0", "end-1c").strip()
 
+                # Get damage_formula, set damage=0 for new system
+                damage_formula_value = self.move_entries["damage_formula"].get().strip() if self.move_entries["damage_formula"].get() else None
+
                 self.cursor.execute("""
                     UPDATE movesets
-                    SET damage = ?, hits = ?, mp_cost = ?, hp_cost = ?,
+                    SET damage = 0, damage_formula = ?, hits = ?, mp_cost = ?, hp_cost = ?,
                         star_cost = ?, stat = ?, bonus_on_hit = ?, save_effect = ?,
                         self_effect = ?, target_effect = ?,
                         description = ?, uses = ?, max_uses = ?, duration = ?, cooldown = ?, form_name = ?
                     WHERE character_name = ? AND move_name = ? AND form_name = ?
                 """, (
-                    self.safe_int(self.move_entries["damage"].get()),
+                    damage_formula_value,
                     self.safe_int(self.move_entries["hits"].get(), 1),
                     self.safe_int(self.move_entries["mp_cost"].get()),
                     self.safe_int(self.move_entries["hp_cost"].get()),

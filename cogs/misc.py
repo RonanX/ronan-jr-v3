@@ -67,6 +67,7 @@ async def get_character_stats(character_name: str) -> dict:
     """
     Fetch character stats from the database (case-insensitive).
     Returns a dict with stat names (lowercase) mapped to their modifier values.
+    Stats are stored directly as modifiers (1-5 range), no conversion needed.
     Returns None if character not found.
     """
     try:
@@ -84,12 +85,11 @@ async def get_character_stats(character_name: str) -> dict:
                 stat_modifiers = json.loads(row[1]) if row[1] else {}
 
                 # Combine base stats with modifiers to get final stat values
+                # Stats are already modifiers (0-4 range), just add effect modifiers
                 final_stats = {}
                 for stat, value in stats_json.items():
                     modifier = stat_modifiers.get(stat, 0)
-                    final_value = value + modifier
-                    # Calculate D&D-style modifier: (stat - 10) // 2
-                    final_stats[stat.lower()] = (final_value - 10) // 2
+                    final_stats[stat.lower()] = value + modifier
 
                 return final_stats
     except Exception as e:
