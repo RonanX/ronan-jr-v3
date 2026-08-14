@@ -281,10 +281,10 @@ class RonanDashboard(ctk.CTk):
             ("HP Cost", "hp_cost"),
             ("Star Cost", "star_cost"),
             ("Stat (str/dex/etc)", "stat"),
-            ("Bonus On Hit", "bonus_on_hit"),
-            ("Save Effect", "save_effect"),
-            ("Self Effect (Guaranteed)", "self_effect"),
-            ("Target Effect (Guaranteed)", "target_effect"),
+            ("Bonus On Hit Note", "bonus_on_hit"),
+            ("Save Success Note", "save_effect"),
+            ("Save Fail Note", "self_effect"),
+            ("Extra Notes", "target_effect"),
             ("Current Uses", "uses"),
             ("Max Uses (Slots)", "max_uses"),
             ("Duration (Rounds)", "duration"),
@@ -930,9 +930,9 @@ class RonanDashboard(ctk.CTk):
         try:
             # Create blank move entry
             self.cursor.execute("""
-                INSERT INTO movesets (character_name, form_name, move_name, category, star_cost, mp_cost, hp_cost, damage)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (self.current_character, form_name, move_name, "utility", 0, 0, 0, 0))
+                INSERT INTO movesets (character_name, form_name, move_name, category, star_cost, mp_cost, hp_cost, damage, damage_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (self.current_character, form_name, move_name, "utility", 0, 0, 0, 0, "physical"))
 
             self.conn.commit()
             self.load_moves_list()

@@ -1536,74 +1536,63 @@ class MoveCommands(commands.Cog):
             color=color
         )
 
-        # Bonus on hit - apply effect if present
-        if move["bonus_on_hit"] and hits_landed > 0:
-            # Actually apply the effect to the database
-            try:
-                # Get current round for duration calculation (default to 99 if no active combat)
-                async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
-                    round_row = await cursor.fetchone()
-                    current_round = round_row[0] if round_row else 99
-
-                # Parse effect name and duration from bonus_on_hit (format: "effect_name" or "effect_name:duration" or "effect_name:duration:note")
-                effect_parts = move["bonus_on_hit"].split(":")
-                effect_name = effect_parts[0].strip().lower()
-                duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2  # default 2 rounds
-                custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""  # optional custom note
-
-                # Calculate expiration round
-                expiration_round = current_round + duration_rounds
-
-                # Get preset and apply
-                effect_data = get_preset_effect(effect_name, expiration_round)
-                if custom_note:
-                    effect_data["note"] = custom_note
-                await apply_effect(target, effect_data, db=db)
-                print(f"[EFFECT] Applied '{effect_name}' to {target} (expires round {expiration_round})")
-            except Exception as e:
-                logger.warning(f"Failed to apply bonus_on_hit effect '{move['bonus_on_hit']}': {e}")
-
-        # Apply guaranteed self_effect to attacker
-        if move["self_effect"]:
-            try:
-                async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
-                    round_row = await cursor.fetchone()
-                    current_round = round_row[0] if round_row else 99
-
-                effect_parts = move["self_effect"].split(":")
-                effect_name = effect_parts[0].strip().lower()
-                duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2
-                custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""
-
-                expiration_round = current_round + duration_rounds
-                effect_data = get_preset_effect(effect_name, expiration_round)
-                if custom_note:
-                    effect_data["note"] = custom_note
-                await apply_effect(character, effect_data, db=db)
-                print(f"[SELF_EFFECT] Applied '{effect_name}' to {character} (expires round {expiration_round})")
-            except Exception as e:
-                logger.warning(f"Failed to apply self_effect '{move['self_effect']}': {e}")
-
-        # Apply guaranteed target_effect to target
-        if move["target_effect"]:
-            try:
-                async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
-                    round_row = await cursor.fetchone()
-                    current_round = round_row[0] if round_row else 99
-
-                effect_parts = move["target_effect"].split(":")
-                effect_name = effect_parts[0].strip().lower()
-                duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2
-                custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""
-
-                expiration_round = current_round + duration_rounds
-                effect_data = get_preset_effect(effect_name, expiration_round)
-                if custom_note:
-                    effect_data["note"] = custom_note
-                await apply_effect(target, effect_data, db=db)
-                print(f"[TARGET_EFFECT] Applied '{effect_name}' to {target} (expires round {expiration_round})")
-            except Exception as e:
-                logger.warning(f"Failed to apply target_effect '{move['target_effect']}': {e}")
+        # AUTO-EFFECT SYSTEM DISABLED - DM applies effects manually with /effect add
+        # These fields are now just reference notes for the DM
+        # Original auto-apply code commented out below:
+        #
+        # if move["bonus_on_hit"] and hits_landed > 0:
+        #     try:
+        #         async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
+        #             round_row = await cursor.fetchone()
+        #             current_round = round_row[0] if round_row else 99
+        #         effect_parts = move["bonus_on_hit"].split(":")
+        #         effect_name = effect_parts[0].strip().lower()
+        #         duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2
+        #         custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""
+        #         expiration_round = current_round + duration_rounds
+        #         effect_data = get_preset_effect(effect_name, expiration_round)
+        #         if custom_note:
+        #             effect_data["note"] = custom_note
+        #         await apply_effect(target, effect_data, db=db)
+        #         print(f"[EFFECT] Applied '{effect_name}' to {target} (expires round {expiration_round})")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to apply bonus_on_hit effect '{move['bonus_on_hit']}': {e}")
+        #
+        # if move["self_effect"]:
+        #     try:
+        #         async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
+        #             round_row = await cursor.fetchone()
+        #             current_round = round_row[0] if round_row else 99
+        #         effect_parts = move["self_effect"].split(":")
+        #         effect_name = effect_parts[0].strip().lower()
+        #         duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2
+        #         custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""
+        #         expiration_round = current_round + duration_rounds
+        #         effect_data = get_preset_effect(effect_name, expiration_round)
+        #         if custom_note:
+        #             effect_data["note"] = custom_note
+        #         await apply_effect(character, effect_data, db=db)
+        #         print(f"[SELF_EFFECT] Applied '{effect_name}' to {character} (expires round {expiration_round})")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to apply self_effect '{move['self_effect']}': {e}")
+        #
+        # if move["target_effect"]:
+        #     try:
+        #         async with db.execute("SELECT round_number FROM initiative WHERE id = 1") as cursor:
+        #             round_row = await cursor.fetchone()
+        #             current_round = round_row[0] if round_row else 99
+        #         effect_parts = move["target_effect"].split(":")
+        #         effect_name = effect_parts[0].strip().lower()
+        #         duration_rounds = int(effect_parts[1]) if len(effect_parts) > 1 else 2
+        #         custom_note = effect_parts[2].strip() if len(effect_parts) > 2 else ""
+        #         expiration_round = current_round + duration_rounds
+        #         effect_data = get_preset_effect(effect_name, expiration_round)
+        #         if custom_note:
+        #             effect_data["note"] = custom_note
+        #         await apply_effect(target, effect_data, db=db)
+        #         print(f"[TARGET_EFFECT] Applied '{effect_name}' to {target} (expires round {expiration_round})")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to apply target_effect '{move['target_effect']}': {e}")
 
         # Delete ephemeral thinking message, send fresh visible message
         await interaction.delete_original_response()
